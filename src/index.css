@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Cormorant+Garamond:wght@400;500;600;700&family=Outfit:wght@600;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-serif: "Cormorant Garamond", serif;
+  --font-display: "Outfit", sans-serif;
+  
+  --color-teal-500: #14b8a6;
+  --color-teal-600: #0d9488;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+}
+
+@layer base {
+  body {
+    @apply bg-zinc-950 text-zinc-100 font-sans antialiased;
+  }
+}
+
+.glass-card {
+  @apply bg-zinc-900/50 backdrop-blur-xl border border-white/10 rounded-2xl shadow-xl;
+}
+
+.input-slider {
+  @apply w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-teal-500;
+}
+
+.tab-bar {
+  @apply fixed bottom-8 left-1/2 -translate-x-1/2 bg-[#1c1c1e]/80 backdrop-blur-2xl border border-white/10 px-8 py-4 rounded-full flex items-center gap-12 shadow-2xl z-50;
+}
+
+.tab-icon {
+  @apply text-zinc-500 hover:text-white transition-colors cursor-pointer;
+}
+
+.tab-icon.active {
+  @apply text-white;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

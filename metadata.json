@@ -1,0 +1,5 @@
+{
+  "name": "WhatIff",
+  "description": "A privacy-first financial scenario calculator app that helps users run SIP, EMI, retirement, and goal planning scenarios with visual insights and risk indicators.",
+  "requestFramePermissions": []
+}
