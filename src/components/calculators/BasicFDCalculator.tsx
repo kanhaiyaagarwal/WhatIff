@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { TrendingUp, Share2, Download, ChevronDown, ArrowRight, Star } from 'lucide-react';
+import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ResponsiveContainer, 
@@ -23,6 +24,7 @@ import ShareVision from '../ShareVision';
 import InfoBox from '../InfoBox';
 import { exportToExcel } from '../../lib/exportUtils';
 import AIInsightSection from '../AIInsightSection';
+import { renderInsight } from '../../renderInsight';
 import SliderWithInput from '../SliderWithInput';
 import { Screen } from '../../App';
 
@@ -60,6 +62,17 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
     return result.maturityAmount / Math.pow(1.06, tenure / 12);
   }, [result.maturityAmount, tenure]);
 
+  const realGain = useMemo(() => {
+    return realMaturityValue - principal;
+  }, [realMaturityValue, principal]);
+
+  const sipCorpus = useMemo(() => {
+    const r = 0.12 / 12;
+    const n = tenure;
+    const p = principal;
+    return p * Math.pow(1 + r, n);
+  }, [principal, tenure]);
+
   const taxDetails = useMemo(() => {
     const threshold = citizenType === 'Senior' ? 100000 : 50000;
     const annualInterest = result.grossInterest * (12 / tenure);
@@ -80,6 +93,29 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
       isTDSApplicable: annualInterest > threshold
     };
   }, [result.grossInterest, tenure, citizenType, taxSlab, principal]);
+
+  const aiData = useMemo(() => {
+    const tenureYears = tenure / 12;
+    const inflationAdjustedPrincipal = principal * Math.pow(1.06, tenureYears);
+    const purchasingPowerLoss = inflationAdjustedPrincipal - principal;
+    const realSurplus = result.maturityAmount - inflationAdjustedPrincipal;
+    const postTaxMaturity = principal + (result.grossInterest * (1 - taxSlab / 100));
+    const realReturnRate = tenureYears > 0 ? (Math.pow(postTaxMaturity / principal, 1 / tenureYears) - 1) * 100 : 0;
+
+    return {
+      principal,
+      fdRate,
+      tenureMonths: tenure,
+      maturityAmount: result.maturityAmount,
+      grossInterest: result.grossInterest,
+      taxSlab,
+      postTaxMaturity,
+      realReturnRate,
+      inflationAdjustedPrincipal,
+      purchasingPowerLoss,
+      realSurplus
+    };
+  }, [principal, fdRate, tenure, result, taxSlab]);
 
   const handleExport = () => {
     exportToExcel(
@@ -598,45 +634,16 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
         mainLabel="Maturity Amount"
         secondaryValues={[
           { label: 'Gross Interest', value: result.grossInterest },
-          { label: 'Real Return', value: `${result.realReturn}%` },
-          { label: 'Tenure', value: `${tenure} Months` },
-          { label: 'Post-Tax Interest', value: taxDetails.postTaxInterest }
+          { label: 'Post-Tax Maturity', value: taxDetails.postTaxMaturityAmount },
+          { label: 'Real Return Rate', value: `${taxDetails.postTaxRealReturn}%` }
         ]}
         category="grow"
-        inputs={{ principal, fdRate, tenure, citizenType, taxSlab, postTaxInterest: taxDetails.postTaxInterest, realReturn: result.realReturn }}
+        inputs={aiData}
         onInsightGenerated={setAiInsight}
-        customPrompt={`
-          Give the user 3 bullet points. Each bullet must be a fact derived directly from their numbers that they would be unlikely to have calculated themselves. Nothing else.
-          Rules:
-
-          Every bullet must use the exact numbers from the user's inputs and outputs
-          Every bullet must reveal something non-obvious — a ratio, a crossover point, a compounding consequence, or a relationship between two numbers the user has not directly compared
-          Never restate anything already visible on the results screen
-          Never give advice, recommendations, or suggestions
-          Never use: should, consider, recommend, try, could, might want to
-          Never mention financial products or instruments
-          No preamble, no opening line, no closing line — just three bullets
-          Plain simple English — one idea per bullet, one sentence per bullet
-          If a number is large write it in Indian format — L for lakhs, Cr for crores
-
-          The standard for each bullet is: would the user have known this without a calculator? If yes, discard it and find something harder to see.
-          Examples of wrong bullets:
-          ❌ 'Your EMI is ₹45,000 per month' — visible on screen
-          ❌ 'You should increase your SIP to build more wealth' — advice
-          ❌ 'Inflation reduces your returns over time' — generic, not derived from their numbers
-          Examples of correct bullets:
-          ✅ 'Your total interest payment of ₹28.4L over 20 years is 2.3x the original loan amount of ₹12L'
-          ✅ 'At your current return rate, the growth earned in the last 3 years exceeds the total growth earned in the first 7 years combined'
-          ✅ 'Your post-tax real return of 0.47% means ₹1,00,000 today becomes ₹1,00,470 in real terms after 12 months — a gain of ₹470 on a locked deposit'
-          ✅ 'At 6% inflation your EMI of ₹45,000 has the same purchasing power as ₹25,200 today by the time the loan ends in 20 years'
-          Three bullets. Facts only. Nothing the user already knows.
-
-          AI insights must be strictly factual and number-based. They must never constitute financial advice, investment recommendations, or financial planning guidance.
-
-          Analyze this Fixed Deposit for an Indian investor. 
-          Principal ₹${principal}, FD rate ${fdRate}%, tenure ${tenure} months, tax slab ${taxSlab}%, post-tax interest ₹${taxDetails.postTaxInterest}, real return after 6% inflation ${result.realReturn}%.
-          
-          Note: DICGC (subsidiary of RBI) insures deposits up to ₹5,00,000 per depositor per bank.`}
+        customPrompt={(() => {
+          const bulletInstructions = "Bullet 1 must state the inflationAdjustedPrincipal and compare it to the principal to show how much is needed just to maintain purchasing power. Bullet 2 must state the realSurplus (maturityAmount - inflationAdjustedPrincipal) to show the true wealth gain after inflation. Bullet 3 must state the realReturnRate and compare it to the nominal fdRate to show the impact of taxes and inflation combined.";
+          return GLOBAL_AI_INSTRUCTION + "\n\nData:\n" + JSON.stringify(aiData) + "\n\nBullet instructions:\n" + bulletInstructions;
+        })()}
       />
 
       {/* Nudge Card */}
@@ -730,7 +737,9 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
           { label: 'Tenure', value: `${tenure} Months` },
           { label: 'Post-Tax Interest', value: taxDetails.postTaxInterest }
         ]}
-        insight={aiInsight}
+        insight={renderInsight(aiInsight || (isTaxExpanded && taxSlab > 0
+          ? `After ${taxSlab}% tax your FD earns ₹${taxDetails.postTaxInterest} — a post-tax real return of ${taxDetails.postTaxRealReturn}% after 6% inflation. The same amount in an equity mutual fund at 12% historical returns would have grown to ${formatCurrency(sipCorpus)} over the same period.`
+          : `Your ${formatCurrency(principal)} FD earns ${formatCurrency(result.grossInterest)} at ${fdRate}% — but after 6% inflation your money is worth only ${formatCurrency(realMaturityValue)} in today's purchasing power. You lost ${formatCurrency(Math.abs(realGain))} in real terms.`))}
         category="grow"
         inputs={{ 
           principal, 

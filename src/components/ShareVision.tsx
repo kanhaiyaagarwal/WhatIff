@@ -19,7 +19,7 @@ interface ShareVisionProps {
   mainValue: number;
   mainLabel: string;
   secondaryValues: { label: string; value: string | number }[];
-  insight: string;
+  insight: string | React.ReactNode;
   category: 'grow' | 'buy' | 'borrow';
   inputs: any;
   onSave: () => void;
@@ -45,6 +45,8 @@ interface CardConfig {
   customBottomLeft?: string;
   isBuyVsRent?: boolean;
 }
+
+import { renderInsight } from '../renderInsight';
 
 export default function ShareVision({
   isOpen,
@@ -465,6 +467,8 @@ export default function ShareVision({
       }
     }
 
+    if (React.isValidElement(insight) || Array.isArray(insight)) return insight;
+
     // Buy vs Rent specific fallback
     if (title.includes('Buy vs Rent') || inputs.rentNetWorth !== undefined) {
       const { delayCost } = inputs;
@@ -473,7 +477,9 @@ export default function ShareVision({
       if (!insight) return fallback;
       
       // Combine with generated insight
-      const generatedSentences = insight.split('\n').filter(s => s.trim().length > 0).map(s => s.trim().replace(/^[•\-\d.]\s*/, ''));
+      const generatedSentences = typeof insight === 'string' 
+        ? insight.split('\n').filter(s => s.trim().length > 0).map(s => s.trim().replace(/^[•\-\d.]\s*/, ''))
+        : [];
       const combined = [fallback, ...generatedSentences].slice(0, 3);
       return combined;
     }
@@ -494,9 +500,9 @@ export default function ShareVision({
 
     // If insight is not generic, use it
     let resultInsight = insight;
-    const normalizedInsight = (insight || "").toLowerCase().trim();
+    const normalizedInsight = typeof insight === 'string' ? insight.toLowerCase().trim() : "";
     
-    if (!insight || genericInsights.some(g => normalizedInsight.includes(g.toLowerCase()))) {
+    if (typeof insight !== 'string' || !insight || genericInsights.some(g => normalizedInsight.includes(g.toLowerCase()))) {
       // Fallback for Grow category
       if (category === 'grow') {
         const target = inputs.targetAmount || inputs.corpusRequired || mainValue;
@@ -607,7 +613,7 @@ export default function ShareVision({
       }
     }
 
-    return isAffordability ? resultInsight.replace(/Lakhs/g, 'Lacs') : resultInsight;
+    return (isAffordability && typeof resultInsight === 'string') ? resultInsight.replace(/Lakhs/g, 'Lacs') : resultInsight;
   };
 
   const finalInsight = getFinalInsight();
@@ -909,16 +915,7 @@ export default function ShareVision({
                   config.isBuyVsRent ? "text-[14px] text-zinc-400 not-italic space-y-4" : "text-[13px] md:text-[14px] text-zinc-300"
                 )}
               >
-                {Array.isArray(finalInsight) ? (
-                  finalInsight.map((s, i) => (
-                    <div key={i} className="flex gap-3 items-start">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 shrink-0" />
-                      <p>{s}</p>
-                    </div>
-                  ))
-                ) : (
-                  typeof finalInsight === 'string' ? `"${finalInsight}"` : finalInsight
-                )}
+                {typeof finalInsight === 'string' ? renderInsight(finalInsight) : finalInsight}
               </div>
             </div>
 

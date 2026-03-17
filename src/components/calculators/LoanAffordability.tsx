@@ -13,6 +13,7 @@ import {
   CartesianGrid
 } from 'recharts';
 import { ShieldCheck, Info, Share2, AlertCircle, CheckCircle2, AlertTriangle, ChevronLeft, Download } from 'lucide-react';
+import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
 import { calculateLoanAffordability } from '../../lib/calculators';
 import { formatCurrency, cn, formatCompactNumber, formatIndianRupees } from '../../lib/utils';
 import SaveScenarioButton from '../SaveScenarioButton';
@@ -21,6 +22,7 @@ import BrokerSection from '../BrokerSection';
 import InfoBox, { RiskLevel } from '../InfoBox';
 import { exportToExcel } from '../../lib/exportUtils';
 import AIInsightSection from '../AIInsightSection';
+import { renderInsight } from '../../renderInsight';
 
 import SliderWithInput from '../SliderWithInput';
 
@@ -69,6 +71,35 @@ export default function LoanAffordability({ onBack }: LoanAffordabilityProps) {
 
   const safeBorrowingPct = Math.round(((existingEMI + result.availableEMI) / monthlyIncome) * 100);
 
+  const aiData = useMemo(() => {
+    const totalPayment = result.availableEMI * tenure * 12;
+    const totalInterest = totalPayment - result.maxLoan;
+    const interestToPrincipalRatio = result.maxLoan > 0 ? totalInterest / result.maxLoan : 0;
+    const monthlyInterestCost = (result.maxLoan * (interestRate / 100)) / 12;
+    const totalCostOfAsset = result.maxLoan + totalInterest;
+    
+    const inflationAdjustedPrincipal = result.maxLoan * Math.pow(1.06, tenure);
+    const purchasingPowerLoss = inflationAdjustedPrincipal - result.maxLoan;
+    const realSurplus = totalPayment - inflationAdjustedPrincipal;
+
+    return {
+      monthlyIncome,
+      existingEMI,
+      interestRate,
+      tenure,
+      maxLoan: result.maxLoan,
+      availableEMI: result.availableEMI,
+      totalInterest,
+      totalPayment,
+      interestToPrincipalRatio,
+      monthlyInterestCost,
+      totalCostOfAsset,
+      inflationAdjustedPrincipal,
+      purchasingPowerLoss,
+      realSurplus
+    };
+  }, [monthlyIncome, existingEMI, interestRate, tenure, result]);
+
   const handleExport = () => {
     exportToExcel(
       "Loan Affordability Analysis",
@@ -102,70 +133,6 @@ export default function LoanAffordability({ onBack }: LoanAffordabilityProps) {
     }
   };
 
-  const customPrompt = useMemo(() => {
-    const isZeroEligibility = result.maxLoan === 0;
-    const safeEMILimit = monthlyIncome * 0.4;
-    const reductionNeeded = existingEMI - safeEMILimit;
-
-    const globalInstruction = `
-      You are a smart, warm friend who is good with numbers. You are not a financial advisor. You are not telling anyone what to do. You are simply showing people what their own numbers mean — in plain, everyday language that anyone can understand.
-      HARD RULES — these override everything:
-
-      Never tell the user what to do
-      Never use: should, consider, recommend, try, could, might want to
-      Never mention specific financial products or investment instruments
-      Never promise or imply a future outcome
-      Every number you reference must come directly from the user's inputs and outputs — never invent figures
-      Any external benchmark used must be clearly labelled as an approximate Indian average (e.g., 'The average Indian family spends about X on Y')
-
-      LANGUAGE RULES:
-      Use 'I' and 'You'
-      Keep sentences short. No jargon.
-      If a number is large, explain it (e.g., 'That's enough to buy 4 luxury cars' or 'That's 12 years of groceries')
-      Be encouraging but strictly factual.
-
-      FACTUAL RULES:
-      If a number is bad (e.g., high interest), don't sugarcoat it. Just state the consequence (e.g., 'You will pay back double what you borrowed').
-      If they are doing well, celebrate the math, not the person.
-
-      MAKE IT HUMAN:
-      Use approximate Indian benchmarks for context:
-      - A mid-range SUV: ₹15-20 Lakhs
-      - A premium 3BHK in a Tier-1 city: ₹2-3 Crores
-      - A year of engineering college: ₹3-5 Lakhs
-      - A grand wedding: ₹25-50 Lakhs
-      - Monthly groceries for a family of 4: ₹15,000
-
-      STRUCTURE:
-      Paragraph 1: What the numbers show (The 'Mirror')
-      Paragraph 2: What it means in real life (The 'Anchor')
-      Paragraph 3: The one thing they did not know (The 'Insight' - e.g., the impact of inflation or the power of the last 5 years of compounding)
-
-      EXAMPLES OF THE CORRECT TONE:
-      'Your numbers show that in 20 years, you will have ₹1.2 Crores. To put that in perspective, that's roughly the cost of two premium apartments today. One thing the math reveals: nearly 60% of this final amount comes only in the last 5 years of your journey. Time is doing the heavy lifting here.'
-      'At this interest rate, you are paying ₹40 Lakhs just for the privilege of borrowing ₹50 Lakhs. That interest alone could have funded a child's entire higher education. The math shows that for every ₹1 you borrowed, you are giving back ₹1.80.'
-
-      AI insights must be strictly factual and number-based. They must never constitute financial advice, investment recommendations, or financial planning guidance.`;
-
-    if (isZeroEligibility) {
-      return `${globalInstruction}
-        Analyze these "borrow" figures:
-        - Main Value (Max Loan Eligibility): 0
-        - Context: Current existing EMIs (${formatIndianRupees(existingEMI)}) exceed the safe 40% threshold of income (${formatIndianRupees(monthlyIncome)}).
-        - Inputs: ${JSON.stringify({ monthlyIncome, existingEMI, interestRate, tenure })}
-        
-        Focus on the mathematical consequence of current debt levels.
-        The last bullet must state the specific reduction in monthly EMI obligations (₹${formatIndianRupees(reductionNeeded)}) required to reach the 40% benchmark, without prescribing it as an action.`;
-    }
-
-    return `${globalInstruction}
-      Analyze these "borrow" figures:
-      - Main Value (Max Loan Eligibility): ${result.maxLoan}
-      - Context: Based on income of ${formatIndianRupees(monthlyIncome)}, the user is eligible for a loan.
-      - Inputs: ${JSON.stringify({ monthlyIncome, existingEMI, interestRate, tenure })}
-      
-      Focus on total interest consequences and mathematical observations of the loan structure.`;
-  }, [result.maxLoan, monthlyIncome, existingEMI, interestRate, tenure]);
 
   return (
     <div className="space-y-8">
@@ -395,9 +362,12 @@ export default function LoanAffordability({ onBack }: LoanAffordabilityProps) {
           { label: 'Existing EMIs', value: existingEMI }
         ]}
         category="borrow"
-        inputs={{ monthlyIncome, existingEMI, interestRate, tenure }}
-        customPrompt={customPrompt}
+        inputs={aiData}
         onInsightGenerated={setAiInsight}
+        customPrompt={(() => {
+          const bulletInstructions = "Bullet 1 must state the interestToPrincipalRatio showing how many rupees of interest are paid for every 1 rupee of principal borrowed. Bullet 2 must state the monthlyInterestCost and compare it to the availableEMI to show how much of the first month's payment is just interest. Bullet 3 must state the totalCostOfAsset (principal + totalInterest) and compare it to the original maxLoan to show the total multiplier effect.";
+          return GLOBAL_AI_INSTRUCTION + "\n\nData:\n" + JSON.stringify(aiData) + "\n\nBullet instructions:\n" + bulletInstructions;
+        })()}
       />
 
       <BrokerSection />
@@ -415,7 +385,7 @@ export default function LoanAffordability({ onBack }: LoanAffordabilityProps) {
           { label: 'Monthly Income', value: monthlyIncome },
           { label: 'Existing EMIs', value: existingEMI }
         ]}
-        insight={aiInsight || (result.riskLevel === 'Safe' ? 'You are well within safe borrowing limits. Lenders will likely approve your application quickly.' : 'Your debt levels are manageable but approach with caution.')}
+        insight={renderInsight(aiInsight || (result.riskLevel === 'Safe' ? 'You are well within safe borrowing limits. Lenders will likely approve your application quickly.' : 'Your debt levels are manageable but approach with caution.'))}
         category="borrow"
         inputs={{ monthlyIncome, existingEMI, interestRate, tenure, availableEMI: result.availableEMI, riskLevel: result.riskLevel, income: monthlyIncome }}
         onSave={() => setIsShareOpen(false)}

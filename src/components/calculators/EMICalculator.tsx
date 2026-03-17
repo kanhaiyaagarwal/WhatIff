@@ -13,6 +13,7 @@ import {
   CartesianGrid
 } from 'recharts';
 import { CreditCard, Info, Share2, ChevronLeft, Download } from 'lucide-react';
+import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
 import { calculateEMI } from '../../lib/calculators';
 import { formatCurrency, formatCompactNumber, formatIndianRupees } from '../../lib/utils';
 import SaveScenarioButton from '../SaveScenarioButton';
@@ -21,6 +22,7 @@ import BrokerSection from '../BrokerSection';
 import InfoBox, { RiskLevel } from '../InfoBox';
 import { exportToExcel } from '../../lib/exportUtils';
 import AIInsightSection from '../AIInsightSection';
+import { renderInsight } from '../../renderInsight';
 
 import SliderWithInput from '../SliderWithInput';
 
@@ -75,6 +77,31 @@ export default function EMICalculator({ onBack }: EMICalculatorProps) {
     }
     return data;
   }, [loanAmount, interestRate, tenure, result.monthlyEMI]);
+
+  const aiData = useMemo(() => {
+    const interestToPrincipalRatio = result.totalInterest / loanAmount;
+    const monthlyInterestCost = (loanAmount * (interestRate / 100)) / 12;
+    const totalCostOfAsset = loanAmount + result.totalInterest;
+    
+    const inflationAdjustedPrincipal = loanAmount * Math.pow(1.06, tenure);
+    const purchasingPowerLoss = inflationAdjustedPrincipal - loanAmount;
+    const realSurplus = result.totalPayment - inflationAdjustedPrincipal;
+
+    return {
+      loanAmount,
+      interestRate,
+      tenure,
+      monthlyEMI: result.monthlyEMI,
+      totalInterest: result.totalInterest,
+      totalPayment: result.totalPayment,
+      interestToPrincipalRatio,
+      monthlyInterestCost,
+      totalCostOfAsset,
+      inflationAdjustedPrincipal,
+      purchasingPowerLoss,
+      realSurplus
+    };
+  }, [loanAmount, interestRate, tenure, result]);
 
   const handleExport = () => {
     exportToExcel(
@@ -302,50 +329,12 @@ export default function EMICalculator({ onBack }: EMICalculatorProps) {
           { label: 'Tenure', value: `${tenure} Years` }
         ]}
         category="borrow"
-        inputs={{ loanAmount, interestRate, tenure }}
+        inputs={aiData}
         onInsightGenerated={setAiInsight}
-        customPrompt={`
-          You are a smart, warm friend who is good with numbers. You are not a financial advisor. You are not telling anyone what to do. You are simply showing people what their own numbers mean — in plain, everyday language that anyone can understand.
-          HARD RULES — these override everything:
-
-          Never tell the user what to do
-          Never use: should, consider, recommend, try, could, might want to
-          Never mention specific financial products or investment instruments
-          Never promise or imply a future outcome
-          Every number you reference must come directly from the user's inputs and outputs — never invent figures
-          Any external benchmark used must be clearly labelled as an approximate Indian average (e.g., 'The average Indian family spends about X on Y')
-
-          LANGUAGE RULES:
-          Use 'I' and 'You'
-          Keep sentences short. No jargon.
-          If a number is large, explain it (e.g., 'That's enough to buy 4 luxury cars' or 'That's 12 years of groceries')
-          Be encouraging but strictly factual.
-
-          FACTUAL RULES:
-          If a number is bad (e.g., high interest), don't sugarcoat it. Just state the consequence (e.g., 'You will pay back double what you borrowed').
-          If they are doing well, celebrate the math, not the person.
-
-          MAKE IT HUMAN:
-          Use approximate Indian benchmarks for context:
-          - A mid-range SUV: ₹15-20 Lakhs
-          - A premium 3BHK in a Tier-1 city: ₹2-3 Crores
-          - A year of engineering college: ₹3-5 Lakhs
-          - A grand wedding: ₹25-50 Lakhs
-          - Monthly groceries for a family of 4: ₹15,000
-
-          STRUCTURE:
-          Paragraph 1: What the numbers show (The 'Mirror')
-          Paragraph 2: What it means in real life (The 'Anchor')
-          Paragraph 3: The one thing they did not know (The 'Insight' - e.g., the impact of inflation or the power of the last 5 years of compounding)
-
-          EXAMPLES OF THE CORRECT TONE:
-          'Your numbers show that in 20 years, you will have ₹1.2 Crores. To put that in perspective, that's roughly the cost of two premium apartments today. One thing the math reveals: nearly 60% of this final amount comes only in the last 5 years of your journey. Time is doing the heavy lifting here.'
-          'At this interest rate, you are paying ₹40 Lakhs just for the privilege of borrowing ₹50 Lakhs. That interest alone could have funded a child's entire higher education. The math shows that for every ₹1 you borrowed, you are giving back ₹1.80.'
-
-          AI insights must be strictly factual and number-based. They must never constitute financial advice, investment recommendations, or financial planning guidance.
-
-          Analyze this EMI calculation for an Indian borrower. 
-          Loan amount ₹${loanAmount}, interest rate ${interestRate}%, tenure ${tenure} years, monthly EMI ₹${result.monthlyEMI}, total interest ₹${result.totalInterest}, total payment ₹${result.totalPayment}.`}
+        customPrompt={(() => {
+          const bulletInstructions = "Bullet 1 must state the interestToPrincipalRatio showing how many rupees of interest are paid for every 1 rupee of principal borrowed. Bullet 2 must state the monthlyInterestCost and compare it to the monthlyEMI to show how much of the first month's payment is just interest. Bullet 3 must state the totalCostOfAsset (principal + totalInterest) and compare it to the original loanAmount to show the total multiplier effect.";
+          return GLOBAL_AI_INSTRUCTION + "\n\nData:\n" + JSON.stringify(aiData) + "\n\nBullet instructions:\n" + bulletInstructions;
+        })()}
       />
 
       <BrokerSection />
@@ -363,7 +352,7 @@ export default function EMICalculator({ onBack }: EMICalculatorProps) {
           { label: 'Loan Amount', value: loanAmount },
           { label: 'Tenure', value: `${tenure} Years` }
         ]}
-        insight={aiInsight || `Your total interest cost is ${formatIndianRupees(result.totalInterest)}. Consider a shorter tenure to save on interest if your budget allows.`}
+        insight={renderInsight(aiInsight || `Your total interest cost is ${formatIndianRupees(result.totalInterest)}. Consider a shorter tenure to save on interest if your budget allows.`)}
         category="borrow"
         inputs={{ loanAmount, interestRate, tenure, totalInterest: result.totalInterest, totalPayment: result.totalPayment }}
         onSave={() => setIsShareOpen(false)}

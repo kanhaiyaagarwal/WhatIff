@@ -32,8 +32,9 @@ import StaggeredFDPlanner from './components/calculators/StaggeredFDPlanner';
 import BasicFDCalculator from './components/calculators/BasicFDCalculator';
 import BuyVsRentCalculator from './components/calculators/BuyVsRentCalculator';
 import ComparisonView from './components/ComparisonView';
+import PrivacyPolicy from './components/PrivacyPolicy';
 
-export type Screen = 'landing' | 'dashboard' | 'sip' | 'emi' | 'goal' | 'retirement' | 'affordability' | 'home_purchase' | 'staggered_fd' | 'basic_fd' | 'buy_vs_rent' | 'comparison';
+export type Screen = 'landing' | 'dashboard' | 'sip' | 'emi' | 'goal' | 'retirement' | 'affordability' | 'home_purchase' | 'staggered_fd' | 'basic_fd' | 'buy_vs_rent' | 'comparison' | 'privacy';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('landing');
@@ -76,6 +77,8 @@ export default function App() {
         return <BuyVsRentCalculator onBack={() => setCurrentScreen('dashboard')} initialData={sharedState} />;
       case 'comparison':
         return <ComparisonView ids={selectedScenarioIds} onBack={() => setCurrentScreen('dashboard')} />;
+      case 'privacy':
+        return <PrivacyPolicy onBack={() => setCurrentScreen('dashboard')} />;
       default:
         return <Dashboard onNavigate={handleNavigate} onCompare={handleCompare} />;
     }
@@ -84,7 +87,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
       {/* Header */}
-      {currentScreen !== 'landing' && (
+      {currentScreen !== 'landing' && currentScreen !== 'privacy' && (
         <header className="border-b border-white/5 bg-zinc-900/50 backdrop-blur-xl sticky top-0 z-50">
           <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -113,7 +116,7 @@ export default function App() {
       )}
 
       {/* Main Content */}
-      <main className={cn("flex-1 w-full", currentScreen !== 'landing' && "max-w-5xl mx-auto p-6")}>
+      <main className={cn("flex-1 w-full", (currentScreen !== 'landing' && currentScreen !== 'privacy') && "max-w-5xl mx-auto p-6")}>
         <AnimatePresence mode="wait">
           <motion.div
             key={currentScreen}
@@ -128,7 +131,7 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      {currentScreen !== 'landing' && (
+      {currentScreen !== 'landing' && currentScreen !== 'privacy' && (
         <footer className="border-t border-white/5 py-12 bg-zinc-900/30">
           <div className="max-w-5xl mx-auto px-6 space-y-8">
             <div className="flex flex-col md:flex-row justify-between items-center gap-8">

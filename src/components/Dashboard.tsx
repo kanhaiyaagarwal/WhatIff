@@ -330,6 +330,15 @@ export default function Dashboard({ onNavigate, onCompare }: DashboardProps) {
           )}
         </section>
       )}
+      
+      <div className="pt-12 pb-8 flex justify-center">
+        <button 
+          onClick={() => onNavigate('privacy')}
+          className="text-[12px] text-zinc-500 hover:text-white transition-colors"
+        >
+          Privacy Policy
+        </button>
+      </div>
     </div>
   );
 }

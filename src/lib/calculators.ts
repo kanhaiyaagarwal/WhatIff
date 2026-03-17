@@ -122,8 +122,13 @@ export function calculateRetirement(
   const totalMonthsPost = yearsInRetirement * 12;
   
   // Corpus required (Present Value of Annuity)
-  const corpusRequired = futureMonthlyExpense * 
-    ((1 - Math.pow(1 + monthlyRealRate, -totalMonthsPost)) / monthlyRealRate);
+  let corpusRequired;
+  if (Math.abs(expectedReturnPost - inflationRate) < 0.001) {
+    corpusRequired = futureMonthlyExpense * totalMonthsPost;
+  } else {
+    corpusRequired = futureMonthlyExpense * 
+      ((1 - Math.pow(1 + monthlyRealRate, -totalMonthsPost)) / monthlyRealRate);
+  }
     
   return {
     futureMonthlyExpense: Math.round(futureMonthlyExpense),

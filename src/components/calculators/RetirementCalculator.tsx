@@ -11,17 +11,22 @@ import {
   Legend,
   AreaChart,
   Area,
-  ReferenceLine
+  ReferenceLine,
+  LineChart,
+  Line,
+  LabelList
 } from 'recharts';
 import { Palmtree, Info, Share2, AlertTriangle, ChevronLeft, Download } from 'lucide-react';
+import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
 import { calculateRetirement } from '../../lib/calculators';
-import { formatCurrency, formatCompactNumber, formatIndianRupees } from '../../lib/utils';
+import { formatCurrency, formatCompactNumber, formatIndianRupees, formatIndianShort } from '../../lib/utils';
 import SaveScenarioButton from '../SaveScenarioButton';
 import ShareVision from '../ShareVision';
 import InvestmentBrokerSection from '../InvestmentBrokerSection';
 import InfoBox, { RiskLevel } from '../InfoBox';
 import { exportToExcel } from '../../lib/exportUtils';
 import AIInsightSection from '../AIInsightSection';
+import { renderInsight } from '../../renderInsight';
 
 import SliderWithInput from '../SliderWithInput';
 
@@ -37,8 +42,10 @@ export default function RetirementCalculator({ onBack }: RetirementCalculatorPro
   const [returnPre, setReturnPre] = useState(12);
   const [returnPost, setReturnPost] = useState(8);
   const [currentSIP, setCurrentSIP] = useState(10000);
+  const [existingNetWorth, setExistingNetWorth] = useState(0);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [aiInsight, setAiInsight] = useState<string>('');
+  const [barPositions, setBarPositions] = useState<{ x: number; width: number; label: string; index: number }[]>([]);
   const [chartReady, setChartReady] = useState(false);
 
   useEffect(() => {
@@ -46,25 +53,57 @@ export default function RetirementCalculator({ onBack }: RetirementCalculatorPro
     return () => clearTimeout(timer);
   }, []);
 
+  const safeValue = (val: number) => (!isNaN(val) && isFinite(val) && val >= 0) ? val : 0;
+
   const result = useMemo(() => {
-    return calculateRetirement(
-      currentAge, 
-      retirementAge, 
-      monthlyExpense, 
-      inflation, 
-      returnPre, 
-      returnPost
-    );
-  }, [currentAge, retirementAge, monthlyExpense, inflation, returnPre, returnPost]);
+    const yearsToRetirement = retirementAge - currentAge;
+    const yearsInRetirement = 85 - retirementAge;
+    const retirementDurationMonths = yearsInRetirement * 12;
+    const monthlyExpensesAtRetirement = monthlyExpense * Math.pow(1 + inflation / 100, yearsToRetirement);
+
+    let corpusRequired;
+    if (Math.abs(returnPost - inflation) < 0.001) {
+      // Special case — when returns equal inflation, corpus is simply
+      // monthly expenses at retirement × total retirement months
+      // because real return is 0% — no growth above inflation
+      corpusRequired = monthlyExpensesAtRetirement * retirementDurationMonths;
+    } else {
+      // Standard formula
+      const monthlyPostRetireReturn = returnPost / 100 / 12;
+      const monthlyInflation = inflation / 100 / 12;
+      corpusRequired = monthlyExpensesAtRetirement * ((1 - Math.pow((1 + monthlyInflation) / (1 + monthlyPostRetireReturn), retirementDurationMonths)) / (monthlyPostRetireReturn - monthlyInflation));
+    }
+
+    return {
+      futureMonthlyExpense: Math.round(monthlyExpensesAtRetirement),
+      corpusRequired: Math.round(corpusRequired),
+      yearsToRetirement,
+      yearsInRetirement
+    };
+  }, [currentAge, retirementAge, monthlyExpense, inflation, returnPost]);
+
+  const futureValueOfExistingNetWorth = useMemo(() => {
+    return safeValue(existingNetWorth * Math.pow(1 + returnPre / 100, result.yearsToRetirement));
+  }, [existingNetWorth, returnPre, result.yearsToRetirement]);
+
+  const remainingCorpusNeeded = useMemo(() => {
+    return safeValue(result.corpusRequired - futureValueOfExistingNetWorth);
+  }, [result.corpusRequired, futureValueOfExistingNetWorth]);
 
   // Calculate required SIP to reach corpus
   const requiredSIP = useMemo(() => {
     const r = returnPre / 12 / 100;
     const n = (retirementAge - currentAge) * 12;
     if (n <= 0) return 0;
-    const sip = result.corpusRequired / (((Math.pow(1 + r, n) - 1) / r) * (1 + r));
-    return Math.round(sip);
-  }, [result.corpusRequired, returnPre, retirementAge, currentAge]);
+    
+    let sip;
+    if (r === 0) {
+      sip = remainingCorpusNeeded / n;
+    } else {
+      sip = remainingCorpusNeeded * r / ((Math.pow(1 + r, n) - 1) * (1 + r));
+    }
+    return Math.round(safeValue(sip));
+  }, [remainingCorpusNeeded, returnPre, retirementAge, currentAge]);
 
   const riskLevel = useMemo((): RiskLevel => {
     if (requiredSIP < 10000) return 'safe';
@@ -77,30 +116,92 @@ export default function RetirementCalculator({ onBack }: RetirementCalculatorPro
     const n = (retirementAge - currentAge) * 12;
     if (n <= 0) return 0;
     const fv = currentSIP * (((Math.pow(1 + r, n) - 1) / r) * (1 + r));
-    return Math.round(fv);
+    return Math.round(safeValue(fv));
   }, [currentSIP, returnPre, retirementAge, currentAge]);
 
   const accumulationData = useMemo(() => {
-    const data = [];
-    const r = returnPre / 12 / 100;
-    const n = (retirementAge - currentAge) * 12;
-    let balance = 0;
-    let investment = 0;
+    return Array.from({ length: result.yearsToRetirement + 1 }, (_, year) => {
+      const sipCorpusAtYear = requiredSIP > 0
+        ? requiredSIP * ((Math.pow(1 + returnPre / 100 / 12, year * 12) - 1) / (returnPre / 100 / 12)) * (1 + returnPre / 100 / 12)
+        : 0;
+      const netWorthAtYear = existingNetWorth * Math.pow(1 + returnPre / 100, year);
+      return {
+        year: new Date().getFullYear() + year,
+        sipCorpus: Math.round(sipCorpusAtYear),
+        netWorthGrowth: Math.round(netWorthAtYear),
+        totalCorpus: Math.round(sipCorpusAtYear + netWorthAtYear)
+      };
+    });
+  }, [result.yearsToRetirement, requiredSIP, returnPre, existingNetWorth]);
 
-    for (let m = 1; m <= n; m++) {
-      balance = (balance + currentSIP) * (1 + r);
-      investment += currentSIP;
+  const comparisonData = useMemo(() => {
+    const sipContribution = requiredSIP * ((Math.pow(1 + returnPre / 100 / 12, result.yearsToRetirement * 12) - 1) / (returnPre / 100 / 12)) * (1 + returnPre / 100 / 12);
+    
+    return [
+      { name: 'Corpus Required', value: Math.round(result.corpusRequired), color: '#52525b' },
+      { name: 'Existing Net Worth', value: Math.round(futureValueOfExistingNetWorth), color: '#22d3ee' },
+      { name: 'SIP Contribution', value: Math.round(sipContribution), color: '#10b981' }
+    ];
+  }, [result.corpusRequired, futureValueOfExistingNetWorth, requiredSIP, returnPre, result.yearsToRetirement]);
 
-      if (m % 12 === 0) {
-        data.push({
-          age: currentAge + (m / 12),
-          balance: Math.round(balance),
-          investment: Math.round(investment),
-        });
-      }
-    }
-    return data;
-  }, [currentAge, retirementAge, currentSIP, returnPre]);
+  const CustomBar = (props: any) => {
+    const { x, width, payload, fill, y, height, index } = props;
+    
+    useEffect(() => {
+      setBarPositions(prev => {
+        const existing = prev.find(p => p.index === index);
+        if (existing && existing.x === x && existing.width === width) return prev;
+        const updated = [...prev.filter(p => p.index !== index), { x, width, label: payload.name, index }].sort((a, b) => a.index - b.index);
+        return updated;
+      });
+    }, [x, width, index, payload.name]);
+
+    return <rect x={x} y={y} width={width} height={height} fill={fill} rx={4} ry={4} />;
+  };
+
+  const aiData = useMemo(() => {
+    const corpusInTodaysMoney = result.corpusRequired / Math.pow(1 + inflation / 100, result.yearsToRetirement);
+    const monthlyWithdrawalNominal = result.futureMonthlyExpense;
+    const monthlyWithdrawalReal = monthlyExpense;
+    
+    const totalInvested = currentSIP * result.yearsToRetirement * 12;
+    const inflationAdjustedPrincipal = totalInvested * Math.pow(1 + inflation / 100, result.yearsToRetirement);
+    const purchasingPowerLoss = inflationAdjustedPrincipal - totalInvested;
+    const realSurplus = projectedCorpus - inflationAdjustedPrincipal;
+
+    const totalAtRetirement = projectedCorpus + futureValueOfExistingNetWorth;
+    const shortfall = result.corpusRequired - totalAtRetirement;
+
+    return {
+      currentAge,
+      retirementAge,
+      monthlyExpense,
+      inflation,
+      returnPre,
+      returnPost,
+      currentSIP,
+      existingNetWorth,
+      futureValueOfExistingNetWorth: Math.round(safeValue(futureValueOfExistingNetWorth)),
+      netWorthGrowthMultiple: existingNetWorth > 0 ? (futureValueOfExistingNetWorth / existingNetWorth).toFixed(1) : "0",
+      remainingCorpusNeeded: Math.round(safeValue(remainingCorpusNeeded)),
+      netWorthCoversPercent: Math.round(safeValue((futureValueOfExistingNetWorth / result.corpusRequired) * 100)),
+      corpusRequired: safeValue(result.corpusRequired),
+      futureMonthlyExpense: safeValue(result.futureMonthlyExpense),
+      yearsToRetirement: result.yearsToRetirement,
+      yearsInRetirement: result.yearsInRetirement,
+      requiredSIP: safeValue(requiredSIP),
+      projectedCorpus: safeValue(projectedCorpus),
+      totalAtRetirement: safeValue(totalAtRetirement),
+      shortfall: shortfall, // Can be negative (surplus)
+      corpusInTodaysMoney: safeValue(corpusInTodaysMoney),
+      monthlyWithdrawalNominal: safeValue(monthlyWithdrawalNominal),
+      monthlyWithdrawalReal: safeValue(monthlyWithdrawalReal),
+      totalInvested: safeValue(totalInvested),
+      inflationAdjustedPrincipal: safeValue(inflationAdjustedPrincipal),
+      purchasingPowerLoss: safeValue(purchasingPowerLoss),
+      realSurplus: safeValue(realSurplus)
+    };
+  }, [currentAge, retirementAge, monthlyExpense, inflation, returnPre, returnPost, currentSIP, existingNetWorth, futureValueOfExistingNetWorth, remainingCorpusNeeded, result, requiredSIP, projectedCorpus]);
 
   const handleExport = () => {
     exportToExcel(
@@ -227,24 +328,62 @@ export default function RetirementCalculator({ onBack }: RetirementCalculatorPro
             onChange={setCurrentSIP}
             formatDisplay={(v) => formatCurrency(v)}
           />
+
+          <SliderWithInput
+            label="Existing Net Worth"
+            value={existingNetWorth}
+            min={0}
+            max={100000000}
+            step={10000}
+            onChange={setExistingNetWorth}
+            formatDisplay={(v) => formatCurrency(v)}
+            footerLabel="Total value of savings, investments, and assets you already have today"
+          />
         </div>
 
         {/* Results Card */}
         <div className="glass-card p-8 space-y-8 flex flex-col w-full h-full">
           <div className="space-y-1">
             <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Corpus Required</p>
-            <p className="text-4xl font-bold text-white">{formatCurrency(result.corpusRequired)}</p>
+            <p className="text-4xl font-bold text-white">{formatCurrency(safeValue(result.corpusRequired))}</p>
           </div>
           <div className="grid grid-cols-2 gap-4 pt-6 border-t border-white/5">
             <div className="space-y-1">
               <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Future Monthly Exp.</p>
-              <p className="text-lg font-bold text-white">{formatCurrency(result.futureMonthlyExpense)}</p>
+              <p className="text-lg font-bold text-white">{formatCurrency(safeValue(result.futureMonthlyExpense))}</p>
             </div>
             <div className="space-y-1">
               <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Required Monthly SIP</p>
-              <p className="text-lg font-bold text-emerald-400">{formatCurrency(requiredSIP)}</p>
+              {futureValueOfExistingNetWorth >= result.corpusRequired ? (
+                <p className="text-lg font-bold text-emerald-400">₹0</p>
+              ) : (
+                <p className="text-lg font-bold text-emerald-400">{formatCurrency(safeValue(requiredSIP))}</p>
+              )}
             </div>
           </div>
+
+          {existingNetWorth > 0 && (
+            <div className="grid grid-cols-2 gap-4 pt-6 border-t border-white/5">
+              <div className="space-y-1">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Your Net Worth Grows To</p>
+                <p className="text-lg font-bold text-emerald-400">{formatCurrency(safeValue(futureValueOfExistingNetWorth))}</p>
+                <p className="text-[10px] text-zinc-500">What your existing {formatCurrency(existingNetWorth)} becomes by retirement at {returnPre}% p.a.</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Corpus Still Needed</p>
+                <p className="text-lg font-bold text-emerald-400">{formatCurrency(safeValue(remainingCorpusNeeded))}</p>
+                <p className="text-[10px] text-zinc-500">After your existing net worth, this is what your SIP needs to build</p>
+              </div>
+            </div>
+          )}
+
+          {futureValueOfExistingNetWorth >= result.corpusRequired && (
+            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+              <p className="text-sm text-emerald-400 leading-relaxed">
+                Your existing net worth of {formatCurrency(existingNetWorth)} is on track to cover your full retirement corpus at {returnPre}% returns. No additional monthly investment is needed.
+              </p>
+            </div>
+          )}
           
           <div className="pt-2">
             <InfoBox 
@@ -264,21 +403,15 @@ export default function RetirementCalculator({ onBack }: RetirementCalculatorPro
           <div className="h-[300px] w-full" style={{ minWidth: 0, minHeight: 300 }}>
             {chartReady && (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={accumulationData}>
-                  <defs>
-                    <linearGradient id="colorValueRetire" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
+                <LineChart data={accumulationData} margin={{ bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                   <XAxis 
-                    dataKey="age" 
+                    dataKey="year" 
                     stroke="#52525b" 
                     fontSize={12} 
                     tickLine={false} 
                     axisLine={false}
-                    label={{ value: 'Age', position: 'insideBottom', offset: -5, fill: '#52525b', fontSize: 10 }}
+                    label={{ value: 'Year', position: 'insideBottom', offset: -5, fill: '#52525b', fontSize: 10 }}
                   />
                   <YAxis 
                     stroke="#52525b" 
@@ -290,18 +423,44 @@ export default function RetirementCalculator({ onBack }: RetirementCalculatorPro
                   <Tooltip 
                     cursor={false}
                     contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
-                    formatter={(value: number) => [formatCurrency(value), 'Value']}
-                    labelFormatter={(label) => `Age ${label}`}
+                    formatter={(value: number, name: string) => [formatCurrency(value), name]}
+                    labelFormatter={(label) => `Year ${label}`}
                   />
-                  <Area 
+                  <Legend verticalAlign="bottom" height={50} iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+                  <Line 
+                    isAnimationActive={false}
                     type="monotone" 
-                    dataKey="balance" 
+                    dataKey="totalCorpus" 
+                    name={existingNetWorth > 0 ? "Total Corpus" : "SIP Corpus Only"}
                     stroke="#10b981" 
                     strokeWidth={3}
-                    fillOpacity={1} 
-                    fill="url(#colorValueRetire)" 
+                    dot={false}
                   />
-                </AreaChart>
+                  {existingNetWorth > 0 && (
+                    <>
+                      <Line 
+                        isAnimationActive={false}
+                        type="monotone" 
+                        dataKey="sipCorpus" 
+                        name="SIP Corpus Only"
+                        stroke="#a1a1aa" 
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                      />
+                      <Line 
+                        isAnimationActive={false}
+                        type="monotone" 
+                        dataKey="netWorthGrowth" 
+                        name="Existing NW Growth"
+                        stroke="#22d3ee" 
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                      />
+                    </>
+                  )}
+                </LineChart>
               </ResponsiveContainer>
             )}
           </div>
@@ -310,45 +469,80 @@ export default function RetirementCalculator({ onBack }: RetirementCalculatorPro
         {/* Comparison Chart */}
         <div className="glass-card p-6 min-w-0">
           <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-6">Corpus Comparison</h3>
-          <div className="h-[300px] w-full" style={{ minWidth: 0, minHeight: 300 }}>
+          <div className="h-[300px] w-full relative" style={{ minWidth: 0, minHeight: 300 }}>
             {chartReady && (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={[
-                    { name: 'Required', value: result.corpusRequired },
-                    { name: 'Projected', value: projectedCorpus }
-                  ]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis 
-                    dataKey="name" 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fill: '#71717a', fontSize: 12 }}
-                  />
-                  <YAxis 
-                    stroke="#52525b" 
-                    fontSize={10} 
-                    tickLine={false} 
-                    axisLine={false}
-                    tickFormatter={(val) => formatCompactNumber(val)}
-                  />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
-                    itemStyle={{ color: '#fff' }}
-                    cursor={{ fill: 'transparent' }}
-                    formatter={(value: number) => [formatCurrency(value), '']}
-                  />
-                  <ReferenceLine y={result.corpusRequired} stroke="#ef4444" strokeDasharray="3 3" />
-                  <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={60}>
-                    <Cell fill="#52525b" />
-                    <Cell fill={projectedCorpus >= result.corpusRequired ? '#10b981' : '#ef4444'} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={comparisonData}
+                    margin={{ top: 30, right: 30, left: 20, bottom: 10 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis 
+                      dataKey="name" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={false}
+                    />
+                    <YAxis 
+                      stroke="#52525b" 
+                      fontSize={10} 
+                      tickLine={false} 
+                      axisLine={false}
+                      tickFormatter={(val) => formatCompactNumber(val)}
+                    />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
+                      itemStyle={{ color: '#fff' }}
+                      cursor={{ fill: 'transparent' }}
+                      formatter={(value: number, name: string) => [formatCurrency(value), name]}
+                    />
+                    <Bar 
+                      isAnimationActive={false}
+                      dataKey="value" 
+                      radius={[4, 4, 0, 0]} 
+                      barSize={60}
+                      shape={<CustomBar />}
+                    >
+                      {comparisonData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                      <LabelList 
+                        dataKey="value" 
+                        position="top" 
+                        formatter={(val: number) => formatIndianShort(val).replace('₹', '')}
+                        fill="#a1a1aa"
+                        fontSize={10}
+                        offset={8}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+
+                {/* Absolutely Positioned Labels Row */}
+                <div className="absolute left-0 w-full pointer-events-none" style={{ bottom: '10px', paddingTop: '8px' }}>
+                  {barPositions.map((pos, idx) => (
+                    <div 
+                      key={idx} 
+                      className="absolute flex flex-col items-center min-w-[100px]"
+                      style={{ 
+                        left: pos.x + pos.width / 2, 
+                        transform: 'translateX(-50%)',
+                        top: '8px'
+                      }}
+                    >
+                      <span className="text-[10px] text-zinc-500 text-center leading-tight whitespace-nowrap">
+                        {pos.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
+          <p className="text-[10px] text-zinc-500 mt-4 text-center">
+            Assumes {returnPre}% annual returns over {result.yearsToRetirement} years.
+          </p>
         </div>
       </div>
 
@@ -375,59 +569,45 @@ export default function RetirementCalculator({ onBack }: RetirementCalculatorPro
 
       <AIInsightSection 
         title="Retirement Vision"
-        description={`You need a corpus of ${formatCurrency(result.corpusRequired)} to sustain your lifestyle for ${result.yearsInRetirement} years in retirement.`}
-        mainValue={result.corpusRequired}
+        description={`You need a corpus of ${formatCurrency(safeValue(result.corpusRequired))} to sustain your lifestyle for ${result.yearsInRetirement} years in retirement.`}
+        mainValue={safeValue(result.corpusRequired)}
         mainLabel="Target Corpus"
         secondaryValues={[
-          { label: 'Monthly SIP', value: requiredSIP },
-          { label: 'Future Expense', value: result.futureMonthlyExpense },
+          { label: 'Monthly SIP', value: safeValue(requiredSIP) },
+          { label: 'Future Expense', value: safeValue(result.futureMonthlyExpense) },
           { label: 'Years to Retire', value: result.yearsToRetirement },
-          { label: 'Retire Age', value: retirementAge }
+          { label: 'Retire Age', value: retirementAge },
+          { label: 'Inflation (%)', value: inflation },
+          { label: 'Pre-Retire Return (%)', value: returnPre },
+          { label: 'Post-Retire Return (%)', value: returnPost },
+          { label: 'Existing NW', value: existingNetWorth }
         ]}
         category="grow"
-        inputs={{ currentAge, retirementAge, monthlyExpense, inflation, returnPre, returnPost }}
-        customPrompt={`
-          You are a smart, warm friend who is good with numbers. You are not a financial advisor. You are not telling anyone what to do. You are simply showing people what their own numbers mean — in plain, everyday language that anyone can understand.
-          HARD RULES — these override everything:
+        inputs={aiData}
+        onInsightGenerated={setAiInsight}
+        customPrompt={(() => {
+          const sipCorpusStr = formatIndianRupees(aiData.projectedCorpus);
+          const netWorthAtRetirementStr = formatIndianRupees(aiData.futureValueOfExistingNetWorth);
+          const totalStr = formatIndianRupees(aiData.totalAtRetirement);
+          const shortfallStr = formatIndianRupees(Math.abs(aiData.shortfall));
+          const corpusRequiredStr = formatIndianRupees(aiData.corpusRequired);
 
-          Never tell the user what to do
-          Never use: should, consider, recommend, try, could, might want to
-          Never mention specific financial products or investment instruments
-          Never promise or imply a future outcome
-          Every number you reference must come directly from the user's inputs and outputs — never invent figures
-          Any external benchmark used must be clearly labelled as an approximate Indian average (e.g., 'The average Indian family spends about X on Y')
-
-          LANGUAGE RULES:
-          Use 'I' and 'You'
-          Keep sentences short. No jargon.
-          If a number is large, explain it (e.g., 'That's enough to buy 4 luxury cars' or 'That's 12 years of groceries')
-          Be encouraging but strictly factual.
-
-          FACTUAL RULES:
-          If a number is bad (e.g., high interest), don't sugarcoat it. Just state the consequence (e.g., 'You will pay back double what you borrowed').
-          If they are doing well, celebrate the math, not the person.
-
-          MAKE IT HUMAN:
-          Use approximate Indian benchmarks for context:
-          - A mid-range SUV: ₹15-20 Lakhs
-          - A premium 3BHK in a Tier-1 city: ₹2-3 Crores
-          - A year of engineering college: ₹3-5 Lakhs
-          - A grand wedding: ₹25-50 Lakhs
-          - Monthly groceries for a family of 4: ₹15,000
-
-          STRUCTURE:
-          Paragraph 1: What the numbers show (The 'Mirror')
-          Paragraph 2: What it means in real life (The 'Anchor')
-          Paragraph 3: The one thing they did not know (The 'Insight' - e.g., the impact of inflation or the power of the last 5 years of compounding)
-
-          EXAMPLES OF THE CORRECT TONE:
-          'Your numbers show that in 20 years, you will have ₹1.2 Crores. To put that in perspective, that's roughly the cost of two premium apartments today. One thing the math reveals: nearly 60% of this final amount comes only in the last 5 years of your journey. Time is doing the heavy lifting here.'
-          'At this interest rate, you are paying ₹40 Lakhs just for the privilege of borrowing ₹50 Lakhs. That interest alone could have funded a child's entire higher education. The math shows that for every ₹1 you borrowed, you are giving back ₹1.80.'
-
-          AI insights must be strictly factual and number-based. They must never constitute financial advice, investment recommendations, or financial planning guidance.
-
-          Analyze this retirement plan for an Indian user. 
-          Current age ${currentAge}, retirement age ${retirementAge}, monthly expense ₹${monthlyExpense}, inflation ${inflation}%, pre-retirement return ${returnPre}%, post-retirement return ${returnPost}%, required corpus ₹${result.corpusRequired}, future monthly expense ₹${result.futureMonthlyExpense}, required monthly SIP ₹${requiredSIP}.`}
+          let bulletInstructions = "Bullet 1 must state the corpusInTodaysMoney and compare it to the nominal corpusRequired to show the impact of inflation over the accumulation years. Bullet 2 must state the monthlyWithdrawalNominal and contrast it with the monthlyWithdrawalReal (today's expense) to show how much more money is needed just to maintain the same lifestyle. ";
+          
+          if (aiData.shortfall > 0) {
+            bulletInstructions += `Bullet 3 must use this exact sentence: "Your SIP corpus of ${sipCorpusStr} combined with your existing net worth of ${netWorthAtRetirementStr} totals ${totalStr}, leaving a gap of ${shortfallStr} against the ${corpusRequiredStr} you require." `;
+          } else {
+            bulletInstructions += `Bullet 3 must use this exact sentence: "Your SIP corpus of ${sipCorpusStr} combined with your existing net worth of ${netWorthAtRetirementStr} already covers your required corpus of ${corpusRequiredStr}." `;
+          }
+          
+          bulletInstructions += `The analysis must explicitly mention the assumptions used: ${aiData.inflation}% inflation, ${aiData.returnPre}% pre-retirement return, and ${aiData.returnPost}% post-retirement return. `;
+          
+          if (existingNetWorth > 0) {
+            bulletInstructions = `If existingNetWorth is above 0, Bullet 1 must state netWorthCoversPercent — what percentage of the total retirement corpus the existing net worth already covers after growing at the expected return rate. Plain language: Your existing ${formatCurrency(existingNetWorth)} grows to ${formatCurrency(futureValueOfExistingNetWorth)} by retirement — that covers ${aiData.netWorthCoversPercent}% of the ${formatCurrency(result.corpusRequired)} you need. ` + bulletInstructions;
+          }
+          
+          return GLOBAL_AI_INSTRUCTION + "\n\nData:\n" + JSON.stringify(aiData) + "\n\nBullet instructions:\n" + bulletInstructions;
+        })()}
       />
 
       <InvestmentBrokerSection />
@@ -437,15 +617,19 @@ export default function RetirementCalculator({ onBack }: RetirementCalculatorPro
         onClose={() => setIsShareOpen(false)}
         title="Retirement Vision"
         description={`To retire at ${retirementAge} with ${formatCurrency(monthlyExpense)}/month in today's money.`}
-        mainValue={result.corpusRequired}
+        mainValue={safeValue(result.corpusRequired)}
         mainLabel="Target Corpus"
         secondaryValues={[
-          { label: 'Monthly SIP', value: requiredSIP },
-          { label: 'Future Expense', value: result.futureMonthlyExpense },
+          { label: 'Monthly SIP', value: safeValue(requiredSIP) },
+          { label: 'Future Expense', value: safeValue(result.futureMonthlyExpense) },
           { label: 'Years to Retire', value: result.yearsToRetirement },
-          { label: 'Retire Age', value: retirementAge }
+          { label: 'Retire Age', value: retirementAge },
+          { label: 'Inflation (%)', value: inflation },
+          { label: 'Pre-Retire Return (%)', value: returnPre },
+          { label: 'Post-Retire Return (%)', value: returnPost },
+          { label: 'Existing NW', value: existingNetWorth }
         ]}
-        insight={aiInsight || `To reach your goal, start a SIP of ${formatIndianRupees(requiredSIP)} today. Every year you delay increases this requirement by ~15%.`}
+        insight={renderInsight(aiInsight || `To reach your goal, start a SIP of ${formatIndianRupees(safeValue(requiredSIP))} today. Every year you delay increases this requirement by ~15%.`)}
         category="grow"
         inputs={{ 
           currentAge, 

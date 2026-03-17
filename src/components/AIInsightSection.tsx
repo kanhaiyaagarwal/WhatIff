@@ -17,6 +17,8 @@ interface AIInsightSectionProps {
   onInsightGenerated?: (insight: string) => void;
 }
 
+import { renderInsight } from '../renderInsight';
+
 export default function AIInsightSection({
   title,
   description,
@@ -186,19 +188,7 @@ export default function AIInsightSection({
                 className="overflow-hidden"
               >
                 <div className="space-y-4 pt-4 border-t border-white/5">
-                  {sentences.map((sentence, idx) => (
-                    <div key={idx} className="flex gap-3 items-start">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 shrink-0" />
-                      <p className={cn(
-                        "leading-relaxed",
-                        idx === 0 && "text-white text-[14px] font-normal",
-                        idx === 1 && "text-zinc-300 text-[13px] font-normal",
-                        idx === 2 && "text-emerald-400 text-[14px] font-bold"
-                      )}>
-                        {sentence.trim()}
-                      </p>
-                    </div>
-                  ))}
+                  {renderInsight(insight)}
                 </div>
               </motion.div>
             )}

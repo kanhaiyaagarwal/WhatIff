@@ -14,12 +14,14 @@ import {
   Area
 } from 'recharts';
 import { Home, ArrowDown, CheckCircle2, AlertCircle, Sparkles, Share2, MapPin, ChevronLeft, Download, Target, BarChart3, ArrowRight } from 'lucide-react';
+import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
 import { formatCurrency, cn, formatCompactNumber, formatIndianRupees } from '../../lib/utils';
 import SaveScenarioButton from '../SaveScenarioButton';
 import ShareVision from '../ShareVision';
 import InfoBox, { RiskLevel } from '../InfoBox';
 import { exportToExcel } from '../../lib/exportUtils';
 import AIInsightSection from '../AIInsightSection';
+import { renderInsight } from '../../renderInsight';
 import { Screen } from '../../App';
 
 import SliderWithInput from '../SliderWithInput';
@@ -146,6 +148,33 @@ export default function HomePurchaseCalculator({ onBack, onNavigate }: HomePurch
     if (ratio > 0.30) return 'moderate';
     return 'safe';
   }, [monthlyEMI, salary]);
+
+  const aiData = useMemo(() => {
+    const totalPayment = monthlyEMI * TENURE_YEARS * 12;
+    const totalInterest = totalPayment - loanAmt;
+    const emiToIncomePercent = (monthlyEMI / salary) * 100;
+    const monthsOfSalaryForInterest = totalInterest / salary;
+    const paisaLeftPerRupee = (salary - monthlyEMI) / salary;
+    const totalCostOfAsset = price + totalInterest;
+    const interestToPrincipalRatio = totalInterest / loanAmt;
+
+    return {
+      propertyValue: price,
+      salary,
+      savings,
+      yearsToGoal,
+      downPayment,
+      loanAmount: loanAmt,
+      monthlyEMI,
+      totalInterest,
+      totalPayment,
+      emiToIncomePercent,
+      monthsOfSalaryForInterest,
+      paisaLeftPerRupee,
+      totalCostOfAsset,
+      interestToPrincipalRatio
+    };
+  }, [price, salary, savings, yearsToGoal, downPayment, loanAmt, monthlyEMI]);
 
   const handleExport = () => {
     exportToExcel(
@@ -570,39 +599,13 @@ export default function HomePurchaseCalculator({ onBack, onNavigate }: HomePurch
           { label: 'Loan Amount', value: loanAmt },
           { label: 'Min. Salary', value: minSalary }
         ]}
-        category="buy"
-        inputs={{ price, salary, savings, city }}
+        category="borrow"
+        inputs={aiData}
         onInsightGenerated={setAiInsight}
-        customPrompt={`
-          Give the user 3 bullet points. Each bullet must be a fact derived directly from their numbers that they would be unlikely to have calculated themselves. Nothing else.
-          Rules:
-
-          Every bullet must use the exact numbers from the user's inputs and outputs
-          Every bullet must reveal something non-obvious — a ratio, a crossover point, a compounding consequence, or a relationship between two numbers the user has not directly compared
-          Never restate anything already visible on the results screen
-          Never give advice, recommendations, or suggestions
-          Never use: should, consider, recommend, try, could, might want to
-          Never mention financial products or instruments
-          No preamble, no opening line, no closing line — just three bullets
-          Plain simple English — one idea per bullet, one sentence per bullet
-          If a number is large write it in Indian format — L for lakhs, Cr for crores
-
-          The standard for each bullet is: would the user have known this without a calculator? If yes, discard it and find something harder to see.
-          Examples of wrong bullets:
-          ❌ 'Your EMI is ₹45,000 per month' — visible on screen
-          ❌ 'You should increase your SIP to build more wealth' — advice
-          ❌ 'Inflation reduces your returns over time' — generic, not derived from their numbers
-          Examples of correct bullets:
-          ✅ 'Your total interest payment of ₹28.4L over 20 years is 2.3x the original loan amount of ₹12L'
-          ✅ 'At your current return rate, the growth earned in the last 3 years exceeds the total growth earned in the first 7 years combined'
-          ✅ 'Your post-tax real return of 0.47% means ₹1,00,000 today becomes ₹1,00,470 in real terms after 12 months — a gain of ₹470 on a locked deposit'
-          ✅ 'At 6% inflation your EMI of ₹45,000 has the same purchasing power as ₹25,200 today by the time the loan ends in 20 years'
-          Three bullets. Facts only. Nothing the user already knows.
-
-          AI insights must be strictly factual and number-based. They must never constitute financial advice, investment recommendations, or financial planning guidance.
-
-          Analyze this home purchase readiness for an Indian user in ${city}. 
-          Home price ₹${price}, salary ₹${salary}, savings ₹${savings}, down payment ₹${downPayment}, loan amount ₹${loanAmt}, monthly EMI ₹${monthlyEMI}, min salary required ₹${minSalary}.`}
+        customPrompt={(() => {
+          const bulletInstructions = "Bullet 1 must state the emiToIncomePercent and compare it to the monthly salary. Bullet 2 must state the monthsOfSalaryForInterest showing how many months of total work go only toward paying the bank's interest. Bullet 3 must state the paisaLeftPerRupee showing how much of every 1 rupee earned is left after the EMI is paid.";
+          return GLOBAL_AI_INSTRUCTION + "\n\nData:\n" + JSON.stringify(aiData) + "\n\nBullet instructions:\n" + bulletInstructions;
+        })()}
       />
 
       {/* Explore Further Section */}
@@ -665,7 +668,7 @@ export default function HomePurchaseCalculator({ onBack, onNavigate }: HomePurch
           { label: 'Monthly EMI', value: monthlyEMI },
           { label: 'Min. Salary', value: minSalary }
         ]}
-        insight={aiInsight || (qualifies ? "Your salary qualifies for this purchase." : "Consider a lower price point or higher down payment.")}
+        insight={renderInsight(aiInsight || (qualifies ? "Your salary qualifies for this purchase." : "Consider a lower price point or higher down payment."))}
         category="buy"
         inputs={{ price, salary, savings, city, monthlyEMI, emiToIncome: Math.round((monthlyEMI / salary) * 100), propertyPrice: price, downPayment, loanAmount: loanAmt }}
         onSave={() => setIsShareOpen(false)}

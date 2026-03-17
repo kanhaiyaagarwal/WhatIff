@@ -30,7 +30,7 @@ export default function SliderWithInput({
   tag
 }: SliderWithInputProps) {
   const [isEditing, setIsEditing] = useState(false);
-  const [inputValue, setInputValue] = useState(value.toString());
+  const [displayValue, setDisplayValue] = useState(value.toString());
   const [shouldShake, setShouldShake] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -47,14 +47,32 @@ export default function SliderWithInput({
   const accentRange = currentAccent.split(' ')[1];
   const accentBorder = currentAccent.split(' ')[2];
 
+  // Sync display value when numeric value changes from outside (e.g. slider)
   useEffect(() => {
     if (!isEditing) {
-      setInputValue(value.toString());
+      setDisplayValue(value.toString());
     }
   }, [value, isEditing]);
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    setDisplayValue(raw);
+    
+    // Remove commas for parsing
+    const clean = raw.replace(/,/g, '');
+    const num = parseFloat(clean);
+    
+    if (!isNaN(num)) {
+      // Clamp to min and max as requested, but don't round to step
+      const clamped = Math.min(Math.max(num, min), max);
+      onChange(clamped);
+    }
+  };
+
   const handleBlur = () => {
-    let num = parseFloat(inputValue);
+    const clean = displayValue.replace(/,/g, '');
+    let num = parseFloat(clean);
+    
     if (isNaN(num)) {
       num = value;
     }
@@ -74,9 +92,11 @@ export default function SliderWithInput({
       setTimeout(() => setShouldShake(false), 500);
     }
 
-    // Round to nearest step
-    const stepped = Math.round(clamped / step) * step;
-    onChange(stepped);
+    // Update with clamped value, NO ROUNDING to step
+    onChange(clamped);
+    
+    // Format the display value on blur with Indian number formatting
+    setDisplayValue(clamped.toLocaleString('en-IN'));
     setIsEditing(false);
   };
 
@@ -84,7 +104,7 @@ export default function SliderWithInput({
     if (e.key === 'Enter') {
       handleBlur();
     } else if (e.key === 'Escape') {
-      setInputValue(value.toString());
+      setDisplayValue(value.toString());
       setIsEditing(false);
     }
   };
@@ -109,8 +129,8 @@ export default function SliderWithInput({
                 autoFocus
                 type="text"
                 inputMode="numeric"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
+                value={displayValue}
+                onChange={handleInputChange}
                 onBlur={handleBlur}
                 onKeyDown={handleKeyDown}
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -130,7 +150,12 @@ export default function SliderWithInput({
             ) : (
               <motion.span
                 key="text"
-                onClick={() => setIsEditing(true)}
+                onClick={() => {
+                  setIsEditing(true);
+                  // When starting to edit, show the raw number without formatting for easier editing
+                  // or keep it as is if it's already formatted.
+                  // The user pattern suggests formatting on blur.
+                }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -151,7 +176,11 @@ export default function SliderWithInput({
         max={max} 
         step={step}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => {
+          const val = Number(e.target.value);
+          onChange(val);
+          setDisplayValue(val.toString());
+        }}
         className={cn("input-slider", accentRange)}
       />
       {footerLabel && (

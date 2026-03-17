@@ -15,6 +15,7 @@ import {
   Home,
   Sparkles
 } from 'lucide-react';
+import { GLOBAL_AI_INSTRUCTION } from '../aiInsightPrompt';
 import { motion } from 'motion/react';
 import { storage, SavedScenario } from '../lib/storage';
 import { formatCurrency, cn, formatIndianRupees } from '../lib/utils';
@@ -26,6 +27,7 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import AIInsightSection from './AIInsightSection';
+import { renderInsight } from '../renderInsight';
 
 interface ComparisonViewProps {
   ids: string[];
@@ -73,85 +75,17 @@ function buildComparisonPrompt(scenarios: SavedScenario[], type: string, mostAch
     return `Scenario ${i + 1} (${s.name}): Inputs [${inputs}], Outputs [${outputs}]`;
   }).join('\n');
 
-  const globalInstruction = `
-    You are a smart, warm friend who is good with numbers. You are not a financial advisor. You are not telling anyone what to do. You are simply showing people what their own numbers mean — in plain, everyday language that anyone can understand.
-    HARD RULES — these override everything:
+  const bulletInstructions = "Bullet 1 must compare the primary output of all scenarios (e.g., total corpus or total interest) to show the gap between the best and worst case. Bullet 2 must identify the scenario with the most favorable ratio (e.g., highest real return or lowest interest-to-principal ratio). Bullet 3 must reveal a non-obvious consequence of choosing one scenario over another (e.g., how many extra years of work or months of salary are saved/spent).";
 
-    Never tell the user what to do
-    Never use: should, consider, recommend, try, could, might want to
-    Never mention specific financial products or investment instruments
-    Never promise or imply a future outcome
-    Every number you reference must come directly from the user's inputs and outputs — never invent figures
-    Any external benchmark used must be clearly labelled as an approximate Indian average (e.g., 'The average Indian family spends about X on Y')
+  return `${GLOBAL_AI_INSTRUCTION}
 
-    LANGUAGE RULES:
-    Use 'I' and 'You'
-    Keep sentences short. No jargon.
-    If a number is large, explain it (e.g., 'That's enough to buy 4 luxury cars' or 'That's 12 years of groceries')
-    Be encouraging but strictly factual.
+Data:
+${scenarioList}
+Type: ${type}
+Most Achievable: ${mostAchievableName}
 
-    FACTUAL RULES:
-    If a number is bad (e.g., high interest), don't sugarcoat it. Just state the consequence (e.g., 'You will pay back double what you borrowed').
-    If they are doing well, celebrate the math, not the person.
-
-    MAKE IT HUMAN:
-    Use approximate Indian benchmarks for context:
-    - A mid-range SUV: ₹15-20 Lakhs
-    - A premium 3BHK in a Tier-1 city: ₹2-3 Crores
-    - A year of engineering college: ₹3-5 Lakhs
-    - A grand wedding: ₹25-50 Lakhs
-    - Monthly groceries for a family of 4: ₹15,000
-
-    STRUCTURE:
-    Paragraph 1: What the numbers show (The 'Mirror')
-    Paragraph 2: What it means in real life (The 'Anchor')
-    Paragraph 3: The one thing they did not know (The 'Insight' - e.g., the impact of inflation or the power of the last 5 years of compounding)
-
-    EXAMPLES OF THE CORRECT TONE:
-    'Your numbers show that in 20 years, you will have ₹1.2 Crores. To put that in perspective, that's roughly the cost of two premium apartments today. One thing the math reveals: nearly 60% of this final amount comes only in the last 5 years of your journey. Time is doing the heavy lifting here.'
-    'At this interest rate, you are paying ₹40 Lakhs just for the privilege of borrowing ₹50 Lakhs. That interest alone could have funded a child's entire higher education. The math shows that for every ₹1 you borrowed, you are giving back ₹1.80.'
-
-    AI insights must be strictly factual and number-based. They must never constitute financial advice, investment recommendations, or financial planning guidance.`;
-
-  let typeSpecificInstruction = "";
-  switch (type) {
-    case 'retirement':
-      typeSpecificInstruction = "focus on monthly expenses in retirement and corpus required";
-      break;
-    case 'sip':
-      typeSpecificInstruction = "focus on future value and monthly investment amount";
-      break;
-    case 'goal':
-      typeSpecificInstruction = "focus on target amount and required monthly SIP";
-      break;
-    case 'emi':
-      typeSpecificInstruction = "focus on total interest paid and monthly EMI amount";
-      break;
-    case 'affordability':
-      typeSpecificInstruction = "focus on maximum loan amount and monthly EMI";
-      break;
-    case 'home_purchase':
-      typeSpecificInstruction = "focus on EMI to income ratio and down payment gap";
-      break;
-    case 'staggered_fd':
-      typeSpecificInstruction = "focus on total emergency fund and extra interest earned vs savings account";
-      break;
-    case 'basic_fd':
-      typeSpecificInstruction = "focus on post-tax real returns and tax slab impact";
-      break;
-    case 'buy_vs_rent':
-      typeSpecificInstruction = "focus on net worth difference and break-even year";
-      break;
-  }
-
-  return `${globalInstruction}
-    A user is comparing ${scenarios.length} saved ${type} scenarios. 
-    The most achievable scenario based on the lowest required monthly SIP or lowest EMI is ${mostAchievableName}.
-    
-    Here are their scenarios with all key values:
-    ${scenarioList}
-    
-    Specific instruction for this type: ${typeSpecificInstruction}`;
+Bullet instructions:
+${bulletInstructions}`;
 }
 
 export default function ComparisonView({ ids, onBack }: ComparisonViewProps) {

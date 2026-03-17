@@ -12,6 +12,7 @@ import {
   Cell
 } from 'recharts';
 import { TrendingUp, Share2, Download, Info, ChevronDown, ShieldCheck, Star, ArrowRight } from 'lucide-react';
+import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRef } from 'react';
 import { calculateStaggeredFD } from '../../lib/calculators';
@@ -21,6 +22,7 @@ import ShareVision from '../ShareVision';
 import InfoBox from '../InfoBox';
 import { exportToExcel } from '../../lib/exportUtils';
 import AIInsightSection from '../AIInsightSection';
+import { renderInsight } from '../../renderInsight';
 
 import SliderWithInput from '../SliderWithInput';
 
@@ -108,6 +110,33 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
   const tdsThreshold = citizenType === 'Senior' ? 100000 : 50000;
   const formattedThreshold = citizenType === 'Senior' ? '₹1,00,000' : '₹50,000';
   const interestForTDS = isTaxExpanded && taxSlab > 0 ? taxDetails.postTaxTotalInterest : result.totalFDInterest;
+
+  const aiData = useMemo(() => {
+    const maxTenure = 12; // Initial ladder is 12 months
+    const totalInterest = isReinvested ? result.totalInterestWithReinvestment : result.totalFDInterest;
+    const totalMaturity = totalAmount + totalInterest;
+    const inflationAdjustedPrincipal = totalAmount * Math.pow(1.06, maxTenure / 12);
+    const purchasingPowerLoss = inflationAdjustedPrincipal - totalAmount;
+    const realSurplus = totalMaturity - inflationAdjustedPrincipal;
+    const postTaxMaturity = totalAmount + (totalInterest * (1 - taxSlab / 100));
+    const realReturnRate = (Math.pow(postTaxMaturity / totalAmount, 1 / (maxTenure / 12)) - 1) * 100;
+
+    return {
+      totalAmount,
+      numFDs,
+      fdRate,
+      savingsRate,
+      isReinvested,
+      totalInterest,
+      totalMaturity,
+      taxSlab,
+      postTaxMaturity,
+      realReturnRate,
+      inflationAdjustedPrincipal,
+      purchasingPowerLoss,
+      realSurplus
+    };
+  }, [totalAmount, numFDs, fdRate, savingsRate, isReinvested, result, taxSlab]);
 
   const handleExport = () => {
     exportToExcel(
@@ -647,53 +676,16 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
         mainLabel="Extra Earned"
         secondaryValues={[
           { label: 'Total Fund', value: totalAmount },
-          { label: 'FDs', value: numFDs },
-          { label: 'FD Rate', value: `${fdRate}%` },
-          { label: 'Savings Rate', value: `${savingsRate}%` }
+          { label: 'Interval', value: `${result.interval} Months` },
+          { label: 'Real Return Rate', value: `${taxDetails.postTaxRealReturn}%` }
         ]}
         category="grow"
-        inputs={{ totalAmount, numFDs, fdRate, savingsRate, amountPerFD: result.amountPerFD, interval: result.interval, extraInterest: extraEarned, isReinvested }}
+        inputs={aiData}
         onInsightGenerated={setAiInsight}
-        customPrompt={`
-          Give the user 3 bullet points. Each bullet must be a fact derived directly from their numbers that they would be unlikely to have calculated themselves. Nothing else.
-          Rules:
-
-          Every bullet must use the exact numbers from the user's inputs and outputs
-          Every bullet must reveal something non-obvious — a ratio, a crossover point, a compounding consequence, or a relationship between two numbers the user has not directly compared
-          Never restate anything already visible on the results screen
-          Never give advice, recommendations, or suggestions
-          Never use: should, consider, recommend, try, could, might want to
-          Never mention financial products or instruments
-          No preamble, no opening line, no closing line — just three bullets
-          Plain simple English — one idea per bullet, one sentence per bullet
-          If a number is large write it in Indian format — L for lakhs, Cr for crores
-
-          The standard for each bullet is: would the user have known this without a calculator? If yes, discard it and find something harder to see.
-          Examples of wrong bullets:
-          ❌ 'Your EMI is ₹45,000 per month' — visible on screen
-          ❌ 'You should increase your SIP to build more wealth' — advice
-          ❌ 'Inflation reduces your returns over time' — generic, not derived from their numbers
-          Examples of correct bullets:
-          ✅ 'Your total interest payment of ₹28.4L over 20 years is 2.3x the original loan amount of ₹12L'
-          ✅ 'At your current return rate, the growth earned in the last 3 years exceeds the total growth earned in the first 7 years combined'
-          ✅ 'Your post-tax real return of 0.47% means ₹1,00,000 today becomes ₹1,00,470 in real terms after 12 months — a gain of ₹470 on a locked deposit'
-          ✅ 'At 6% inflation your EMI of ₹45,000 has the same purchasing power as ₹25,200 today by the time the loan ends in 20 years'
-          Three bullets. Facts only. Nothing the user already knows.
-
-          AI insights must be strictly factual and number-based. They must never constitute financial advice, investment recommendations, or financial planning guidance.
-
-          Analyze this Staggered FD strategy for an Indian user. 
-          Total emergency fund: ₹${totalAmount}. Split into ${numFDs} FDs of ₹${result.amountPerFD} each. FD interest rate: ${fdRate}%. Savings account rate: ${savingsRate}%. Extra interest earned vs savings account: ₹${extraEarned}. One FD matures every ${result.interval} months.
-          ${isReinvested ? `Reinvestment enabled: total interest ₹${result.totalInterestWithReinvestment} vs ₹${result.totalFDInterest} without — bonus of ₹${result.reinvestmentBonus}.` : ''}
-          ${isTaxExpanded ? `Tax bracket: ${taxSlab}%. Post-tax total FD interest: ₹${taxDetails.postTaxTotalInterest}. Post-tax extra earned: ₹${taxDetails.postTaxExtraEarned}. Post-tax real return after 6% inflation: ${taxDetails.postTaxRealReturn}%.` : ''}`}
-
-
-
-
-
-
-
-
+        customPrompt={(() => {
+          const bulletInstructions = "Bullet 1 must state the inflationAdjustedPrincipal and compare it to the totalAmount to show how much is needed just to maintain purchasing power. Bullet 2 must state the realSurplus (totalMaturity - inflationAdjustedPrincipal) to show the true wealth gain after inflation. Bullet 3 must state the realReturnRate and compare it to the nominal fdRate to show the impact of taxes and inflation combined.";
+          return GLOBAL_AI_INSTRUCTION + "\n\nData:\n" + JSON.stringify(aiData) + "\n\nBullet instructions:\n" + bulletInstructions;
+        })()}
       />
 
       {/* Top Banks Section */}
@@ -779,13 +771,13 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
           }
           return stats;
         })()}
-        insight={aiInsight || (isTaxExpanded && taxSlab > 0
+        insight={renderInsight(aiInsight || (isTaxExpanded && taxSlab > 0
           ? `After ${taxSlab}% tax your staggered FD earns ₹${taxDetails.postTaxTotalInterest} — a post-tax real return of ${taxDetails.postTaxRealReturn}% after 6% inflation. Keeping the same amount in a savings account would earn ₹${taxDetails.postTaxSavingsInterest} after tax — the staggered strategy puts ₹${taxDetails.postTaxExtraEarned} more in your pocket for zero additional risk.`
           : (isReinvested 
             ? `Reinvesting each matured FD earns you ${formatCurrency(result.reinvestmentBonus)} extra over the cycle — your emergency fund is now actively compounding while staying liquid every ${result.interval} months.`
             : `Keeping ${formatCurrency(totalAmount)} in a savings account for the same tenure earns ${formatCurrency(result.totalFDInterest - result.extraInterest)}. Your staggered FD strategy earns ${formatCurrency(result.totalFDInterest)} — that's ${formatCurrency(result.extraInterest)} more for doing nothing differently except where you park it.`
           )
-        )}
+        ))}
         category="grow"
         inputs={{ 
           totalAmount, 

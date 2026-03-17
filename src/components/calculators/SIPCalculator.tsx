@@ -12,6 +12,7 @@ import {
   Cell
 } from 'recharts';
 import { TrendingUp, Info, Share2, ChevronLeft, Download } from 'lucide-react';
+import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
 import { calculateSIP } from '../../lib/calculators';
 import { formatCurrency, formatCompactNumber, cn, formatIndianRupees } from '../../lib/utils';
 import SaveScenarioButton from '../SaveScenarioButton';
@@ -20,6 +21,7 @@ import InvestmentBrokerSection from '../InvestmentBrokerSection';
 import InfoBox, { RiskLevel } from '../InfoBox';
 import { exportToExcel } from '../../lib/exportUtils';
 import AIInsightSection from '../AIInsightSection';
+import { renderInsight } from '../../renderInsight';
 
 import SliderWithInput from '../SliderWithInput';
 
@@ -63,7 +65,44 @@ export default function SIPCalculator({ onBack }: SIPCalculatorProps) {
   };
 
   const result = useMemo(() => {
-    return calculateSIP(monthlyInvestment, annualRate, years, stepUp);
+    const res = calculateSIP(monthlyInvestment, annualRate, years, stepUp);
+    
+    // Pre-calculations for AI
+    const totalInvestment = res.totalInvestment;
+    const tenureYears = years;
+    const inflationAdjustedPrincipal = totalInvestment * Math.pow(1.06, tenureYears);
+    const purchasingPowerLoss = inflationAdjustedPrincipal - totalInvestment;
+    const realSurplus = res.futureValue - inflationAdjustedPrincipal;
+    
+    const realReturnRate = ((1 + annualRate / 100) / (1 + 0.06) - 1) * 100;
+    const growthInFinalThreeYears = years >= 3 
+      ? res.yearlyData[years - 1].balance - res.yearlyData[years - 4].balance 
+      : 0;
+    const growthInFirstSevenYears = years >= 7 
+      ? res.yearlyData[6].balance - res.yearlyData[6].investment 
+      : 0;
+    const monthlyRealGain = (res.realCorpus - totalInvestment) / (years * 12);
+
+    return {
+      ...res,
+      aiData: {
+        monthlyInvestment,
+        annualRate,
+        years,
+        stepUp,
+        totalValue: res.futureValue,
+        totalInvested: totalInvestment,
+        realCorpus: res.realCorpus,
+        purchasingPowerLost: res.purchasingPowerLost,
+        realReturnRate,
+        growthInFinalThreeYears,
+        growthInFirstSevenYears,
+        monthlyRealGain,
+        inflationAdjustedPrincipal,
+        purchasingPowerLoss,
+        realSurplus
+      }
+    };
   }, [monthlyInvestment, annualRate, years, stepUp]);
 
   return (
@@ -348,43 +387,12 @@ export default function SIPCalculator({ onBack }: SIPCalculatorProps) {
           { label: 'Real Returns', value: result.realReturns }
         ]}
         category="grow"
-        inputs={{ monthlyInvestment, annualRate, years, stepUp, realCorpus: result.realCorpus, purchasingPowerLost: result.purchasingPowerLost, realReturns: result.realReturns }}
+        inputs={result.aiData}
         onInsightGenerated={setAiInsight}
-        customPrompt={`
-          Give the user 3 bullet points. Each bullet must be a fact derived directly from their numbers that they would be unlikely to have calculated themselves. Nothing else.
-          Rules:
-
-          Every bullet must use the exact numbers from the user's inputs and outputs
-          Every bullet must reveal something non-obvious — a ratio, a crossover point, a compounding consequence, or a relationship between two numbers the user has not directly compared
-          Never restate anything already visible on the results screen
-          Never give advice, recommendations, or suggestions
-          Never use: should, consider, recommend, try, could, might want to
-          Never mention financial products or instruments
-          No preamble, no opening line, no closing line — just three bullets
-          Plain simple English — one idea per bullet, one sentence per bullet
-          If a number is large write it in Indian format — L for lakhs, Cr for crores
-
-          The standard for each bullet is: would the user have known this without a calculator? If yes, discard it and find something harder to see.
-          Examples of wrong bullets:
-          ❌ 'Your EMI is ₹45,000 per month' — visible on screen
-          ❌ 'You should increase your SIP to build more wealth' — advice
-          ❌ 'Inflation reduces your returns over time' — generic, not derived from their numbers
-          Examples of correct bullets:
-          ✅ 'Your total interest payment of ₹28.4L over 20 years is 2.3x the original loan amount of ₹12L'
-          ✅ 'At your current return rate, the growth earned in the last 3 years exceeds the total growth earned in the first 7 years combined'
-          ✅ 'Your post-tax real return of 0.47% means ₹1,00,000 today becomes ₹1,00,470 in real terms after 12 months — a gain of ₹470 on a locked deposit'
-          ✅ 'At 6% inflation your EMI of ₹45,000 has the same purchasing power as ₹25,200 today by the time the loan ends in 20 years'
-          Three bullets. Facts only. Nothing the user already knows.
-
-          Analyze this SIP investment for an Indian investor.
-          Monthly investment: ₹${monthlyInvestment}, Expected return: ${annualRate}%, Tenure: ${years} years, Annual Step-up: ${stepUp}%.
-          
-          Inflation Analysis (6% fixed):
-          - Nominal Future Value: ₹${result.futureValue}
-          - Real Corpus (Today's Money): ₹${result.realCorpus}
-          - Purchasing Power Lost: ₹${result.purchasingPowerLost}
-          - Real Returns (Gain above inflation): ₹${result.realReturns}
-        `}
+        customPrompt={(() => {
+          const bulletInstructions = "Bullet 1 must state the ratio of purchasingPowerLost to totalValue as a percentage showing how much of the nominal corpus inflation wipes out. Bullet 2 must state realCorpus in rupees and compare it to totalInvested showing how much real wealth was actually created above what was put in. Bullet 3 must compare growthInFinalThreeYears against growthInFirstSevenYears stating both amounts and which is larger.";
+          return GLOBAL_AI_INSTRUCTION + "\n\nData:\n" + JSON.stringify(result.aiData) + "\n\nBullet instructions:\n" + bulletInstructions;
+        })()}
       />
 
       {/* Investment Platforms */}
@@ -403,7 +411,7 @@ export default function SIPCalculator({ onBack }: SIPCalculatorProps) {
           { label: 'Power Lost', value: result.purchasingPowerLost },
           { label: 'Real Returns', value: result.realReturns }
         ]}
-        insight={aiInsight || `At ${annualRate}% returns, your wealth compounds significantly. However, 6% inflation will erode ${formatCurrency(result.purchasingPowerLost)} of your purchasing power.`}
+        insight={renderInsight(aiInsight || `At ${annualRate}% returns, your wealth compounds significantly. However, 6% inflation will erode ${formatCurrency(result.purchasingPowerLost)} of your purchasing power.`)}
         category="grow"
         inputs={{ monthlyInvestment, annualRate, years, stepUp, realCorpus: result.realCorpus, purchasingPowerLost: result.purchasingPowerLost, realReturns: result.realReturns }}
         onSave={() => setIsShareOpen(false)}

@@ -14,6 +14,7 @@ import {
   CartesianGrid
 } from 'recharts';
 import { Target, Info, Share2, Sparkles, Download, Instagram, MessageCircle, Linkedin, ChevronLeft } from 'lucide-react';
+import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
 import { formatCurrency, cn, formatCompactNumber, formatIndianRupees } from '../../lib/utils';
 import SaveScenarioButton from '../SaveScenarioButton';
 import ShareVision from '../ShareVision';
@@ -21,6 +22,7 @@ import InvestmentBrokerSection from '../InvestmentBrokerSection';
 import InfoBox, { RiskLevel } from '../InfoBox';
 import { exportToExcel } from '../../lib/exportUtils';
 import AIInsightSection from '../AIInsightSection';
+import { renderInsight } from '../../renderInsight';
 
 import SliderWithInput from '../SliderWithInput';
 
@@ -133,6 +135,37 @@ export default function GoalPlanner({ onBack, initialData }: GoalPlannerProps) {
       };
     }
   }, [requiredReturn]);
+
+  const aiData = useMemo(() => {
+    const totalInvested = monthlySIP * years * 12;
+    const inflationAdjustedPrincipal = totalInvested * Math.pow(1.06, years);
+    const purchasingPowerLoss = inflationAdjustedPrincipal - totalInvested;
+    const realSurplus = targetAmount - inflationAdjustedPrincipal;
+    
+    const realReturnRate = ((1 + requiredReturn / 100) / (1 + 0.06) - 1) * 100;
+    const monthlyRealRate = realReturnRate / 12 / 100;
+    const n = years * 12;
+    let realCorpus = 0;
+    for (let m = 1; m <= n; m++) {
+      realCorpus = (realCorpus + monthlySIP) * (1 + monthlyRealRate);
+    }
+    const monthlyRealGain = (realCorpus - totalInvested) / n;
+
+    return {
+      goalName,
+      targetAmount,
+      years,
+      monthlySIP,
+      requiredReturn,
+      totalInvested,
+      inflationAdjustedPrincipal,
+      purchasingPowerLoss,
+      realSurplus,
+      realReturnRate,
+      realCorpus,
+      monthlyRealGain
+    };
+  }, [goalName, targetAmount, years, monthlySIP, requiredReturn]);
 
   const handleExport = () => {
     exportToExcel(
@@ -521,50 +554,12 @@ export default function GoalPlanner({ onBack, initialData }: GoalPlannerProps) {
             { label: 'Wealth Gain', value: totalEarnings }
           ]}
           category="grow"
-          inputs={{ targetAmount, years, monthlySIP, requiredReturn, isOverInvesting }}
+          inputs={aiData}
           onInsightGenerated={setAiInsight}
-          customPrompt={`
-            You are a smart, warm friend who is good with numbers. You are not a financial advisor. You are not telling anyone what to do. You are simply showing people what their own numbers mean — in plain, everyday language that anyone can understand.
-            HARD RULES — these override everything:
-
-            Never tell the user what to do
-            Never use: should, consider, recommend, try, could, might want to
-            Never mention specific financial products or investment instruments
-            Never promise or imply a future outcome
-            Every number you reference must come directly from the user's inputs and outputs — never invent figures
-            Any external benchmark used must be clearly labelled as an approximate Indian average (e.g., 'The average Indian family spends about X on Y')
-
-            LANGUAGE RULES:
-            Use 'I' and 'You'
-            Keep sentences short. No jargon.
-            If a number is large, explain it (e.g., 'That's enough to buy 4 luxury cars' or 'That's 12 years of groceries')
-            Be encouraging but strictly factual.
-
-            FACTUAL RULES:
-            If a number is bad (e.g., high interest), don't sugarcoat it. Just state the consequence (e.g., 'You will pay back double what you borrowed').
-            If they are doing well, celebrate the math, not the person.
-
-            MAKE IT HUMAN:
-            Use approximate Indian benchmarks for context:
-            - A mid-range SUV: ₹15-20 Lakhs
-            - A premium 3BHK in a Tier-1 city: ₹2-3 Crores
-            - A year of engineering college: ₹3-5 Lakhs
-            - A grand wedding: ₹25-50 Lakhs
-            - Monthly groceries for a family of 4: ₹15,000
-
-            STRUCTURE:
-            Paragraph 1: What the numbers show (The 'Mirror')
-            Paragraph 2: What it means in real life (The 'Anchor')
-            Paragraph 3: The one thing they did not know (The 'Insight' - e.g., the impact of inflation or the power of the last 5 years of compounding)
-
-            EXAMPLES OF THE CORRECT TONE:
-            'Your numbers show that in 20 years, you will have ₹1.2 Crores. To put that in perspective, that's roughly the cost of two premium apartments today. One thing the math reveals: nearly 60% of this final amount comes only in the last 5 years of your journey. Time is doing the heavy lifting here.'
-            'At this interest rate, you are paying ₹40 Lakhs just for the privilege of borrowing ₹50 Lakhs. That interest alone could have funded a child's entire higher education. The math shows that for every ₹1 you borrowed, you are giving back ₹1.80.'
-
-            AI insights must be strictly factual and number-based. They must never constitute financial advice, investment recommendations, or financial planning guidance.
-
-            Analyze this goal plan for an Indian user. 
-            Goal: ${goalName}, target amount ₹${targetAmount}, years ${years}, monthly SIP ₹${monthlySIP}, required return rate ${requiredReturn}% p.a.`}
+          customPrompt={(() => {
+            const bulletInstructions = "Bullet 1 must state the ratio of totalInvested to targetAmount showing what percentage of the goal is coming from the user's pocket vs market growth. Bullet 2 must state the inflationAdjustedPrincipal and how much purchasing power is lost over the tenure. Bullet 3 must state the realSurplus (targetAmount minus inflationAdjustedPrincipal) to show if the goal actually beats inflation in real terms.";
+            return GLOBAL_AI_INSTRUCTION + "\n\nData:\n" + JSON.stringify(aiData) + "\n\nBullet instructions:\n" + bulletInstructions;
+          })()}
         />
       )}
 
@@ -582,7 +577,7 @@ export default function GoalPlanner({ onBack, initialData }: GoalPlannerProps) {
           { label: 'Monthly SIP', value: monthlySIP },
           { label: 'Required Return', value: `${requiredReturn}%` }
         ]}
-        insight={aiInsight || (requiredReturn <= 12 ? "Achievable — This goal is well within historical market returns." : "Aggressive — Requires high equity exposure and risk tolerance.")}
+        insight={renderInsight(aiInsight || (requiredReturn <= 12 ? "Achievable — This goal is well within historical market returns." : "Aggressive — Requires high equity exposure and risk tolerance."))}
         category="grow"
         inputs={{ targetAmount, years, monthlySIP, requiredReturn }}
         onSave={() => setIsShareOpen(false)}
