@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import { TrendingUp, Info, Share2, ChevronLeft, Download } from 'lucide-react';
 import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
-import { calculateSIP } from '../../lib/calculators';
+import { calculateSIP, INFLATION_RATE } from '../../lib/calculators';
 import { formatCurrency, formatCompactNumber, cn, formatIndianRupees } from '../../lib/utils';
 import SaveScenarioButton from '../SaveScenarioButton';
 import ShareVision from '../ShareVision';
@@ -70,11 +70,11 @@ export default function SIPCalculator({ onBack }: SIPCalculatorProps) {
     // Pre-calculations for AI
     const totalInvestment = res.totalInvestment;
     const tenureYears = years;
-    const inflationAdjustedPrincipal = totalInvestment * Math.pow(1.06, tenureYears);
+    const inflationAdjustedPrincipal = totalInvestment * Math.pow(1 + INFLATION_RATE / 100, tenureYears);
     const purchasingPowerLoss = inflationAdjustedPrincipal - totalInvestment;
     const realSurplus = res.futureValue - inflationAdjustedPrincipal;
     
-    const realReturnRate = ((1 + annualRate / 100) / (1 + 0.06) - 1) * 100;
+    const realReturnRate = ((1 + annualRate / 100) / (1 + INFLATION_RATE / 100) - 1) * 100;
     const growthInFinalThreeYears = years >= 3 
       ? res.yearlyData[years - 1].balance - res.yearlyData[years - 4].balance 
       : 0;

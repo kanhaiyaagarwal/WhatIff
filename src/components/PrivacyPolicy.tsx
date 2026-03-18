@@ -88,7 +88,7 @@ export default function PrivacyPolicy({ onBack }: PrivacyPolicyProps) {
               Since we do not collect personal data there is nothing for us to hold, share, or delete on our end. Your calculator inputs are stored locally on your device and are entirely under your control. You may clear them at any time by clearing your browser's local storage or cache.
             </p>
             <p className="text-[14px] text-zinc-400 leading-[1.8] mt-4">
-              To the extent any applicable law including India's Digital Personal Data Protection Act 2023 grants you rights over personal data, those rights are effectively already exercised by design since we do not collect personal data. If you believe we hold any data about you, contact us at the address in Section 11 and we will respond within 30 days.
+              To the extent any applicable law including India's Digital Personal Data Protection Act 2023 grants you rights over personal data, those rights are effectively already exercised by design since we do not collect personal data.
             </p>
           </section>
 
@@ -102,7 +102,7 @@ export default function PrivacyPolicy({ onBack }: PrivacyPolicyProps) {
           <section>
             <h2 className="text-[15px] font-[700] text-white mb-2 mt-7">10. Children</h2>
             <p className="text-[14px] text-zinc-400 leading-[1.8]">
-              WhatIff is not intended for anyone under the age of 18. We do not knowingly collect any data from minors. If you believe a minor has used this application, please contact us immediately.
+              WhatIff is not intended for anyone under the age of 18. We do not knowingly collect any data from minors.
             </p>
           </section>
 
@@ -120,13 +120,6 @@ export default function PrivacyPolicy({ onBack }: PrivacyPolicyProps) {
             <h2 className="text-[15px] font-[700] text-white mb-2 mt-7">12. Changes to This Policy</h2>
             <p className="text-[14px] text-zinc-400 leading-[1.8]">
               If we update this policy we will update the date at the top of this page. Continued use of WhatIff after any update means you accept the revised policy. We encourage you to review this page periodically.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-[15px] font-[700] text-white mb-2 mt-7">13. Contact</h2>
-            <p className="text-[14px] text-zinc-400 leading-[1.8]">
-              Questions about this Privacy Policy or how we handle data? Write to us at [your email]. We will respond within 30 days.
             </p>
           </section>
         </div>

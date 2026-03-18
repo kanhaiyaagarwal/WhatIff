@@ -1,3 +1,5 @@
+export const INFLATION_RATE = 6;
+
 export interface SIPResult {
   futureValue: number;
   totalInvestment: number;
@@ -14,7 +16,6 @@ export function calculateSIP(
   years: number,
   stepUpPercentage: number = 0
 ): SIPResult {
-  const INFLATION_RATE = 6;
   const monthlyRate = annualRate / 12 / 100;
   const realReturnRate = ((1 + annualRate / 100) / (1 + INFLATION_RATE / 100) - 1) * 100;
   const monthlyRealRate = realReturnRate / 12 / 100;
@@ -69,8 +70,13 @@ export function calculateEMI(
   const monthlyRate = annualRate / 12 / 100;
   const months = years * 12;
   
-  const emi = (principal * monthlyRate * Math.pow(1 + monthlyRate, months)) / 
-              (Math.pow(1 + monthlyRate, months) - 1);
+  let emi;
+  if (monthlyRate === 0) {
+    emi = principal / months;
+  } else {
+    emi = (principal * monthlyRate * Math.pow(1 + monthlyRate, months)) / 
+          (Math.pow(1 + monthlyRate, months) - 1);
+  }
   
   const totalPayment = emi * months;
   const totalInterest = totalPayment - principal;
@@ -123,7 +129,7 @@ export function calculateRetirement(
   
   // Corpus required (Present Value of Annuity)
   let corpusRequired;
-  if (Math.abs(expectedReturnPost - inflationRate) < 0.001) {
+  if (Math.abs(monthlyRealRate) < 0.000001) {
     corpusRequired = futureMonthlyExpense * totalMonthsPost;
   } else {
     corpusRequired = futureMonthlyExpense * 
@@ -150,7 +156,12 @@ export function calculateLoanAffordability(
   const r = interestRate / 12 / 100;
   const n = tenureYears * 12;
   
-  const maxLoan = availableEMI * (Math.pow(1 + r, n) - 1) / (r * Math.pow(1 + r, n));
+  let maxLoan;
+  if (r === 0) {
+    maxLoan = availableEMI * n;
+  } else {
+    maxLoan = availableEMI * (Math.pow(1 + r, n) - 1) / (r * Math.pow(1 + r, n));
+  }
   
   let riskLevel: 'Safe' | 'Moderate' | 'High' = 'Safe';
   const emiToIncomeRatio = (existingEMI + availableEMI) / monthlyIncome;
@@ -264,11 +275,7 @@ export function calculateBasicFD(
   const maturityAmount = principal * Math.pow(1 + r/n, n * t);
   const grossInterest = maturityAmount - principal;
   
-  // Real Return after Inflation formula from user:
-  // ((1 + fdRate/100) / (1 + 6/100) - 1) × 100
-  const realReturn = ((1 + annualRate / 100) / (1 + 1.06 / 1.06 * 0.06) - 1) * 100;
-  // Wait, the formula is (1+r)/(1+i) - 1. 
-  // User said: ((1 + fdRate/100) / (1 + 6/100) - 1) × 100
+  // Real Return after Inflation formula: ((1 + r) / (1 + i) - 1) * 100
   const userRealReturn = ((1 + annualRate / 100) / (1 + 6 / 100) - 1) * 100;
   
   return {
@@ -330,7 +337,12 @@ export function calculateBuyVsRent(
     const propertyValueAtYear = propertyPrice * Math.pow(1 + appreciationRate / 100, y);
     const paymentsMade = y * 12;
     // Standard remaining balance formula
-    const remainingLoan = loanAmount * (Math.pow(1 + monthlyRate, totalMonths) - Math.pow(1 + monthlyRate, paymentsMade)) / (Math.pow(1 + monthlyRate, totalMonths) - 1);
+    let remainingLoan;
+    if (monthlyRate === 0) {
+      remainingLoan = Math.max(0, loanAmount * (1 - paymentsMade / totalMonths));
+    } else {
+      remainingLoan = loanAmount * (Math.pow(1 + monthlyRate, totalMonths) - Math.pow(1 + monthlyRate, paymentsMade)) / (Math.pow(1 + monthlyRate, totalMonths) - 1);
+    }
     const buyNetWorth = propertyValueAtYear - Math.max(0, remainingLoan);
 
     // 2. RENT SCENARIO
@@ -398,7 +410,12 @@ export function calculateRentInvestCorpus(
   const monthlyRate = loanRate / 12 / 100;
   const totalMonths = tenureYears * 12;
 
-  const emi = loanAmount * monthlyRate * Math.pow(1 + monthlyRate, totalMonths) / (Math.pow(1 + monthlyRate, totalMonths) - 1);
+  let emi;
+  if (monthlyRate === 0) {
+    emi = loanAmount / totalMonths;
+  } else {
+    emi = loanAmount * monthlyRate * Math.pow(1 + monthlyRate, totalMonths) / (Math.pow(1 + monthlyRate, totalMonths) - 1);
+  }
   const monthlySipRate = sipReturn / 12 / 100;
 
   let currentMonthlyRent = currentRent;
@@ -413,4 +430,25 @@ export function calculateRentInvestCorpus(
     currentMonthlyRent *= (1 + rentIncrease / 100);
   }
   return currentSipBalance;
+}
+
+export function calculateRequiredSIP(
+  targetAmount: number,
+  annualRate: number,
+  years: number
+): number {
+  if (targetAmount <= 0) return 0;
+  if (years <= 0) return targetAmount;
+  
+  const monthlyRate = annualRate / 12 / 100;
+  const months = years * 12;
+  
+  if (monthlyRate === 0) {
+    return targetAmount / months;
+  }
+  
+  // SIP formula: FV = P * [((1 + r)^n - 1) / r] * (1 + r)
+  // Rearranging for P: P = FV / ([((1 + r)^n - 1) / r] * (1 + r))
+  const sip = targetAmount / (((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate) * (1 + monthlyRate));
+  return Math.round(sip);
 }

@@ -59,24 +59,11 @@ export default function EMICalculator({ onBack }: EMICalculatorProps) {
   ];
 
   const amortizationData = useMemo(() => {
-    const data = [];
-    const r = interestRate / 12 / 100;
-    const n = tenure * 12;
-    let balance = loanAmount;
-
-    for (let m = 0; m <= n; m++) {
-      if (m % 12 === 0 || m === n) {
-        data.push({
-          year: m / 12,
-          balance: Math.max(0, Math.round(balance)),
-        });
-      }
-      const interest = balance * r;
-      const principalPaid = result.monthlyEMI - interest;
-      balance -= principalPaid;
-    }
-    return data;
-  }, [loanAmount, interestRate, tenure, result.monthlyEMI]);
+    return result.amortization.map(item => ({
+      year: item.month / 12,
+      balance: item.balance
+    }));
+  }, [result.amortization]);
 
   const aiData = useMemo(() => {
     const interestToPrincipalRatio = result.totalInterest / loanAmount;

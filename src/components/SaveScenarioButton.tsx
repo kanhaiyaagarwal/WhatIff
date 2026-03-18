@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Save, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { storage, CalculatorType } from '../lib/storage';
+import { trackEvent } from '../lib/analytics';
 
 interface SaveScenarioButtonProps {
   type: CalculatorType;
@@ -31,6 +32,11 @@ export default function SaveScenarioButton({ type, inputs, outputs, defaultName,
       name,
       inputs,
       outputs
+    });
+
+    trackEvent('Scenario Saved', {
+      'Calculator Type': type,
+      'Scenario Name': name
     });
 
     setShowSuccess(true);

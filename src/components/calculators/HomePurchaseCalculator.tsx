@@ -16,6 +16,7 @@ import {
 import { Home, ArrowDown, CheckCircle2, AlertCircle, Sparkles, Share2, MapPin, ChevronLeft, Download, Target, BarChart3, ArrowRight } from 'lucide-react';
 import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
 import { formatCurrency, cn, formatCompactNumber, formatIndianRupees } from '../../lib/utils';
+import { calculateEMI, calculateRequiredSIP } from '../../lib/calculators';
 import SaveScenarioButton from '../SaveScenarioButton';
 import ShareVision from '../ShareVision';
 import InfoBox, { RiskLevel } from '../InfoBox';
@@ -47,18 +48,6 @@ function fmt(n: number) {
 
 function fmtK(n: number) {
   return `₹${Math.round(n).toLocaleString("en-IN")}`;
-}
-
-function emi(principal: number, rateAnnual: number, tenureYears: number) {
-  const r = rateAnnual / 12 / 100;
-  const n = tenureYears * 12;
-  return principal * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
-}
-
-function sipMonthly(target: number, years: number, rate = SIP_RETURN) {
-  const r = rate / 12 / 100;
-  const n = years * 12;
-  return target * r / (Math.pow(1 + r, n) - 1);
 }
 
 function useCountUp(target: number, duration = 800) {
@@ -110,37 +99,17 @@ export default function HomePurchaseCalculator({ onBack, onNavigate }: HomePurch
 
   const downPayment = price * DOWN_PCT;
   const loanAmt = price - downPayment;
-  const monthlyEMI = emi(loanAmt, RATE, TENURE_YEARS);
+  const emiResult = useMemo(() => calculateEMI(loanAmt, RATE, TENURE_YEARS), [loanAmt]);
+  const monthlyEMI = emiResult.monthlyEMI;
   const minSalary = monthlyEMI / SAFE_EMI_RATIO;
   const salaryGap = minSalary - salary;
   const qualifies = salary >= minSalary;
   const savingsGap = downPayment - savings;
   const hasSavingsGap = savingsGap > 0;
-  const sipNeeded = hasSavingsGap ? sipMonthly(savingsGap, yearsToGoal) : 0;
+  const sipNeeded = hasSavingsGap ? calculateRequiredSIP(savingsGap, SIP_RETURN, yearsToGoal) : 0;
   const pct = Math.min(100, Math.round((savings / downPayment) * 100));
 
-  const amortizationData = useMemo(() => {
-    const data = [];
-    const r = RATE / 12 / 100;
-    const n = TENURE_YEARS * 12;
-    let balance = loanAmt;
-
-    for (let m = 1; m <= n; m++) {
-      const interest = balance * r;
-      const principalPaid = monthlyEMI - interest;
-      balance -= principalPaid;
-
-      if (m % 12 === 0 || m === 1) {
-        data.push({
-          year: Math.ceil(m / 12),
-          principal: Math.round(principalPaid),
-          interest: Math.round(interest),
-          balance: Math.max(0, Math.round(balance)),
-        });
-      }
-    }
-    return data;
-  }, [loanAmt, monthlyEMI]);
+  const amortizationData = emiResult.amortization;
 
   const riskLevel = useMemo((): RiskLevel => {
     const ratio = monthlyEMI / salary;

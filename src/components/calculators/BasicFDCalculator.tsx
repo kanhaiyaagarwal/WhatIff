@@ -17,7 +17,7 @@ import {
   Bar,
   LabelList
 } from 'recharts';
-import { calculateBasicFD } from '../../lib/calculators';
+import { calculateBasicFD, INFLATION_RATE } from '../../lib/calculators';
 import { formatCurrency, formatIndianRupees, cn } from '../../lib/utils';
 import SaveScenarioButton from '../SaveScenarioButton';
 import ShareVision from '../ShareVision';
@@ -59,7 +59,7 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
   }, [principal, fdRate, tenure]);
 
   const realMaturityValue = useMemo(() => {
-    return result.maturityAmount / Math.pow(1.06, tenure / 12);
+    return result.maturityAmount / Math.pow(1 + INFLATION_RATE / 100, tenure / 12);
   }, [result.maturityAmount, tenure]);
 
   const realGain = useMemo(() => {
@@ -81,7 +81,7 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
     const taxPayable = Math.max(0, totalTax - tdsDeducted);
     const postTaxInterest = result.grossInterest - totalTax;
     const postTaxRate = (postTaxInterest / principal) * (12 / tenure) * 100;
-    const postTaxRealReturn = ((1 + postTaxRate / 100) / (1 + 6 / 100) - 1) * 100;
+    const postTaxRealReturn = ((1 + postTaxRate / 100) / (1 + INFLATION_RATE / 100) - 1) * 100;
 
     return {
       tdsDeducted: Math.round(tdsDeducted),
@@ -96,7 +96,7 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
 
   const aiData = useMemo(() => {
     const tenureYears = tenure / 12;
-    const inflationAdjustedPrincipal = principal * Math.pow(1.06, tenureYears);
+    const inflationAdjustedPrincipal = principal * Math.pow(1 + INFLATION_RATE / 100, tenureYears);
     const purchasingPowerLoss = inflationAdjustedPrincipal - principal;
     const realSurplus = result.maturityAmount - inflationAdjustedPrincipal;
     const postTaxMaturity = principal + (result.grossInterest * (1 - taxSlab / 100));
@@ -137,7 +137,7 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
     const data = [];
     const r = fdRate / 100;
     const n = 4; // Quarterly compounding
-    const inflationRate = 0.06;
+    const inflationRate = INFLATION_RATE / 100;
     
     for (let m = 0; m <= tenure; m++) {
       const t = m / 12;
@@ -180,7 +180,7 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
 
   const waterfallData = useMemo(() => {
     const tenureYears = tenure / 12;
-    const inflationRate = 0.06;
+    const inflationRate = INFLATION_RATE / 100;
     const maturityAmount = result.maturityAmount;
     const realMaturityValue = maturityAmount / Math.pow(1 + inflationRate, tenureYears);
     const inflationErosion = maturityAmount - realMaturityValue;
@@ -738,8 +738,8 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
           { label: 'Post-Tax Interest', value: taxDetails.postTaxInterest }
         ]}
         insight={renderInsight(aiInsight || (isTaxExpanded && taxSlab > 0
-          ? `After ${taxSlab}% tax your FD earns ₹${taxDetails.postTaxInterest} — a post-tax real return of ${taxDetails.postTaxRealReturn}% after 6% inflation. The same amount in an equity mutual fund at 12% historical returns would have grown to ${formatCurrency(sipCorpus)} over the same period.`
-          : `Your ${formatCurrency(principal)} FD earns ${formatCurrency(result.grossInterest)} at ${fdRate}% — but after 6% inflation your money is worth only ${formatCurrency(realMaturityValue)} in today's purchasing power. You lost ${formatCurrency(Math.abs(realGain))} in real terms.`))}
+          ? `After ${taxSlab}% tax your FD earns ₹${taxDetails.postTaxInterest} — a post-tax real return of ${taxDetails.postTaxRealReturn}% after ${INFLATION_RATE}% inflation. The same amount in an equity mutual fund at 12% historical returns would have grown to ${formatCurrency(sipCorpus)} over the same period.`
+          : `Your ${formatCurrency(principal)} FD earns ${formatCurrency(result.grossInterest)} at ${fdRate}% — but after ${INFLATION_RATE}% inflation your money is worth only ${formatCurrency(realMaturityValue)} in today's purchasing power. You lost ${formatCurrency(Math.abs(realGain))} in real terms.`))}
         category="grow"
         inputs={{ 
           principal, 

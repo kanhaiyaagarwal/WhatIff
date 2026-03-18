@@ -18,7 +18,7 @@ import {
 } from 'recharts';
 import { Palmtree, Info, Share2, AlertTriangle, ChevronLeft, Download } from 'lucide-react';
 import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
-import { calculateRetirement } from '../../lib/calculators';
+import { calculateRetirement, calculateRequiredSIP } from '../../lib/calculators';
 import { formatCurrency, formatCompactNumber, formatIndianRupees, formatIndianShort } from '../../lib/utils';
 import SaveScenarioButton from '../SaveScenarioButton';
 import ShareVision from '../ShareVision';
@@ -56,30 +56,14 @@ export default function RetirementCalculator({ onBack }: RetirementCalculatorPro
   const safeValue = (val: number) => (!isNaN(val) && isFinite(val) && val >= 0) ? val : 0;
 
   const result = useMemo(() => {
-    const yearsToRetirement = retirementAge - currentAge;
-    const yearsInRetirement = 85 - retirementAge;
-    const retirementDurationMonths = yearsInRetirement * 12;
-    const monthlyExpensesAtRetirement = monthlyExpense * Math.pow(1 + inflation / 100, yearsToRetirement);
-
-    let corpusRequired;
-    if (Math.abs(returnPost - inflation) < 0.001) {
-      // Special case — when returns equal inflation, corpus is simply
-      // monthly expenses at retirement × total retirement months
-      // because real return is 0% — no growth above inflation
-      corpusRequired = monthlyExpensesAtRetirement * retirementDurationMonths;
-    } else {
-      // Standard formula
-      const monthlyPostRetireReturn = returnPost / 100 / 12;
-      const monthlyInflation = inflation / 100 / 12;
-      corpusRequired = monthlyExpensesAtRetirement * ((1 - Math.pow((1 + monthlyInflation) / (1 + monthlyPostRetireReturn), retirementDurationMonths)) / (monthlyPostRetireReturn - monthlyInflation));
-    }
-
-    return {
-      futureMonthlyExpense: Math.round(monthlyExpensesAtRetirement),
-      corpusRequired: Math.round(corpusRequired),
-      yearsToRetirement,
-      yearsInRetirement
-    };
+    return calculateRetirement(
+      currentAge,
+      retirementAge,
+      monthlyExpense,
+      inflation,
+      returnPre,
+      returnPost
+    );
   }, [currentAge, retirementAge, monthlyExpense, inflation, returnPost]);
 
   const futureValueOfExistingNetWorth = useMemo(() => {
@@ -92,17 +76,9 @@ export default function RetirementCalculator({ onBack }: RetirementCalculatorPro
 
   // Calculate required SIP to reach corpus
   const requiredSIP = useMemo(() => {
-    const r = returnPre / 12 / 100;
     const n = (retirementAge - currentAge) * 12;
     if (n <= 0) return 0;
-    
-    let sip;
-    if (r === 0) {
-      sip = remainingCorpusNeeded / n;
-    } else {
-      sip = remainingCorpusNeeded * r / ((Math.pow(1 + r, n) - 1) * (1 + r));
-    }
-    return Math.round(safeValue(sip));
+    return calculateRequiredSIP(remainingCorpusNeeded, returnPre, retirementAge - currentAge);
   }, [remainingCorpusNeeded, returnPre, retirementAge, currentAge]);
 
   const riskLevel = useMemo((): RiskLevel => {

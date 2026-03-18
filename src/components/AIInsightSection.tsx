@@ -3,6 +3,7 @@ import { Sparkles, Loader2, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from "@google/genai";
 import { cn } from '../lib/utils';
+import { trackEvent } from '../lib/analytics';
 
 interface AIInsightSectionProps {
   title: string;
@@ -127,6 +128,11 @@ export default function AIInsightSection({
       
       const text = response.text || "Analysis complete. Review your financial plan for optimal results.";
       setInsight(text);
+      trackEvent('AI Insight Generated', {
+        'Category': category,
+        'Title': title,
+        'Is Comparison': isComparison
+      });
       if (onInsightGenerated) onInsightGenerated(text);
     } catch (error) {
       console.error('AI Insight Error:', error);
