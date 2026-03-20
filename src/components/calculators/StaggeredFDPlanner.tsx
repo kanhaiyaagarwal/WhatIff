@@ -15,7 +15,7 @@ import { TrendingUp, Share2, Download, Info, ChevronDown, ShieldCheck, Star, Arr
 import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRef } from 'react';
-import { calculateStaggeredFD } from '../../lib/calculators';
+import { calculateStaggeredFD, INFLATION_RATE } from '../../lib/calculators';
 import { formatCurrency, formatCompactNumber, cn, formatIndianRupees } from '../../lib/utils';
 import SaveScenarioButton from '../SaveScenarioButton';
 import ShareVision from '../ShareVision';
@@ -88,7 +88,7 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
     
     // Post-tax real return
     const postTaxFDRate = fdRate * (1 - taxRate);
-    const postTaxRealReturn = ((1 + postTaxFDRate / 100) / (1 + 6 / 100) - 1) * 100;
+    const postTaxRealReturn = ((1 + postTaxFDRate / 100) / (1 + INFLATION_RATE / 100) - 1) * 100;
 
     // Savings interest for fallback
     const postTaxSavingsInterest = (result.totalFDInterest - result.extraInterest) * (1 - taxRate);
@@ -115,11 +115,13 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
     const maxTenure = 12; // Initial ladder is 12 months
     const totalInterest = isReinvested ? result.totalInterestWithReinvestment : result.totalFDInterest;
     const totalMaturity = totalAmount + totalInterest;
-    const inflationAdjustedPrincipal = totalAmount * Math.pow(1.06, maxTenure / 12);
+    const inflationAdjustedPrincipal = totalAmount * Math.pow(1 + INFLATION_RATE / 100, maxTenure / 12);
     const purchasingPowerLoss = inflationAdjustedPrincipal - totalAmount;
     const realSurplus = totalMaturity - inflationAdjustedPrincipal;
     const postTaxMaturity = totalAmount + (totalInterest * (1 - taxSlab / 100));
     const realReturnRate = (Math.pow(postTaxMaturity / totalAmount, 1 / (maxTenure / 12)) - 1) * 100;
+    
+    const realReturnRateAfterInflation = ((1 + realReturnRate / 100) / (1 + INFLATION_RATE / 100) - 1) * 100;
 
     return {
       totalAmount,
@@ -420,13 +422,13 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
                 "text-sm font-bold",
                 taxDetails.postTaxRealReturn < 0 ? "text-red-400" : taxDetails.postTaxRealReturn < 2 ? "text-amber-400" : "text-emerald-400"
               )}>
-                Post-tax real return: {taxDetails.postTaxRealReturn}% after 6% inflation
+                Post-tax real return: {taxDetails.postTaxRealReturn}% after {INFLATION_RATE}% inflation
               </p>
             </div>
           )}
           
           <p className="text-[11px] text-zinc-500 leading-relaxed px-2 mt-4">
-            Assumes 6% annual inflation — India's 10-year CPI average.
+            Assumes {INFLATION_RATE}% annual inflation — India's 10-year CPI average.
           </p>
 
           <InfoBox 
@@ -683,7 +685,7 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
         inputs={aiData}
         onInsightGenerated={setAiInsight}
         customPrompt={(() => {
-          const bulletInstructions = "Bullet 1 must state the inflationAdjustedPrincipal and compare it to the totalAmount to show how much is needed just to maintain purchasing power. Bullet 2 must state the realSurplus (totalMaturity - inflationAdjustedPrincipal) to show the true wealth gain after inflation. Bullet 3 must state the realReturnRate and compare it to the nominal fdRate to show the impact of taxes and inflation combined.";
+          const bulletInstructions = `Bullet 1 must state the inflationAdjustedPrincipal and compare it to the totalAmount to show how much is needed just to maintain purchasing power at ${INFLATION_RATE}% inflation. Bullet 2 must state the realSurplus (totalMaturity - inflationAdjustedPrincipal) to show the true wealth gain after inflation. Bullet 3 must state the realReturnRate and compare it to the nominal fdRate to show the impact of taxes and inflation combined.`;
           return GLOBAL_AI_INSTRUCTION + "\n\nData:\n" + JSON.stringify(aiData) + "\n\nBullet instructions:\n" + bulletInstructions;
         })()}
       />
@@ -772,7 +774,7 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
           return stats;
         })()}
         insight={renderInsight(aiInsight || (isTaxExpanded && taxSlab > 0
-          ? `After ${taxSlab}% tax your staggered FD earns ₹${taxDetails.postTaxTotalInterest} — a post-tax real return of ${taxDetails.postTaxRealReturn}% after 6% inflation. Keeping the same amount in a savings account would earn ₹${taxDetails.postTaxSavingsInterest} after tax — the staggered strategy puts ₹${taxDetails.postTaxExtraEarned} more in your pocket for zero additional risk.`
+          ? `After ${taxSlab}% tax your staggered FD earns ₹${taxDetails.postTaxTotalInterest} — a post-tax real return of ${taxDetails.postTaxRealReturn}% after ${INFLATION_RATE}% inflation. Keeping the same amount in a savings account would earn ₹${taxDetails.postTaxSavingsInterest} after tax — the staggered strategy puts ₹${taxDetails.postTaxExtraEarned} more in your pocket for zero additional risk.`
           : (isReinvested 
             ? `Reinvesting each matured FD earns you ${formatCurrency(result.reinvestmentBonus)} extra over the cycle — your emergency fund is now actively compounding while staying liquid every ${result.interval} months.`
             : `Keeping ${formatCurrency(totalAmount)} in a savings account for the same tenure earns ${formatCurrency(result.totalFDInterest - result.extraInterest)}. Your staggered FD strategy earns ${formatCurrency(result.totalFDInterest)} — that's ${formatCurrency(result.extraInterest)} more for doing nothing differently except where you park it.`

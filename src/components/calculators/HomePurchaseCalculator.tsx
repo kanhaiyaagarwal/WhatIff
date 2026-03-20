@@ -109,7 +109,12 @@ export default function HomePurchaseCalculator({ onBack, onNavigate }: HomePurch
   const sipNeeded = hasSavingsGap ? calculateRequiredSIP(savingsGap, SIP_RETURN, yearsToGoal) : 0;
   const pct = Math.min(100, Math.round((savings / downPayment) * 100));
 
-  const amortizationData = emiResult.amortization;
+  const amortizationData = useMemo(() => {
+    return emiResult.amortization.map(item => ({
+      ...item,
+      year: item.month / 12
+    }));
+  }, [emiResult.amortization]);
 
   const riskLevel = useMemo((): RiskLevel => {
     const ratio = monthlyEMI / salary;
@@ -451,9 +456,9 @@ export default function HomePurchaseCalculator({ onBack, onNavigate }: HomePurch
         {/* Price Breakdown Chart */}
         <div className="p-6 min-w-0 border border-white/10 rounded-2xl bg-transparent">
           <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-6">Property Price Breakdown</h3>
-          <div className="h-[300px] w-full bg-transparent" style={{ minWidth: 0, minHeight: 300 }}>
+          <div className="h-[300px] w-full" style={{ minWidth: 0, minHeight: 300 }}>
             {chartReady && (
-              <ResponsiveContainer width="100%" height="100%" className="bg-transparent">
+              <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={[
                     { 
@@ -463,8 +468,6 @@ export default function HomePurchaseCalculator({ onBack, onNavigate }: HomePurch
                     }
                   ]}
                   margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                  className="!bg-transparent"
-                  style={{ background: 'transparent !important', backgroundColor: 'transparent !important' }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                   <XAxis 
@@ -498,10 +501,10 @@ export default function HomePurchaseCalculator({ onBack, onNavigate }: HomePurch
         {/* Amortization Chart */}
         <div className="p-6 min-w-0 border border-white/10 rounded-2xl bg-transparent">
           <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-6">EMI Amortization</h3>
-          <div className="h-[300px] w-full bg-transparent" style={{ minWidth: 0, minHeight: 300 }}>
+          <div className="h-[300px] w-full" style={{ minWidth: 0, minHeight: 300 }}>
             {chartReady && (
-              <ResponsiveContainer width="100%" height="100%" className="!bg-transparent">
-                <AreaChart data={amortizationData} className="!bg-transparent" style={{ background: 'transparent !important', backgroundColor: 'transparent !important' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={amortizationData}>
                   <defs>
                     <linearGradient id="colorPrincipal" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>

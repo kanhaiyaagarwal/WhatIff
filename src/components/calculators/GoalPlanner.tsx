@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import { Target, Info, Share2, Sparkles, Download, Instagram, MessageCircle, Linkedin, ChevronLeft } from 'lucide-react';
 import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
+import { INFLATION_RATE } from '../../lib/calculators';
 import { formatCurrency, cn, formatCompactNumber, formatIndianRupees } from '../../lib/utils';
 import SaveScenarioButton from '../SaveScenarioButton';
 import ShareVision from '../ShareVision';
@@ -138,11 +139,11 @@ export default function GoalPlanner({ onBack, initialData }: GoalPlannerProps) {
 
   const aiData = useMemo(() => {
     const totalInvested = monthlySIP * years * 12;
-    const inflationAdjustedPrincipal = totalInvested * Math.pow(1.06, years);
+    const inflationAdjustedPrincipal = totalInvested * Math.pow(1 + INFLATION_RATE / 100, years);
     const purchasingPowerLoss = inflationAdjustedPrincipal - totalInvested;
     const realSurplus = targetAmount - inflationAdjustedPrincipal;
     
-    const realReturnRate = ((1 + requiredReturn / 100) / (1 + 0.06) - 1) * 100;
+    const realReturnRate = ((1 + requiredReturn / 100) / (1 + INFLATION_RATE / 100) - 1) * 100;
     const monthlyRealRate = realReturnRate / 12 / 100;
     const n = years * 12;
     let realCorpus = 0;
@@ -557,7 +558,7 @@ export default function GoalPlanner({ onBack, initialData }: GoalPlannerProps) {
           inputs={aiData}
           onInsightGenerated={setAiInsight}
           customPrompt={(() => {
-            const bulletInstructions = "Bullet 1 must state the ratio of totalInvested to targetAmount showing what percentage of the goal is coming from the user's pocket vs market growth. Bullet 2 must state the inflationAdjustedPrincipal and how much purchasing power is lost over the tenure. Bullet 3 must state the realSurplus (targetAmount minus inflationAdjustedPrincipal) to show if the goal actually beats inflation in real terms.";
+          const bulletInstructions = `Bullet 1 must state the ratio of totalInvested to targetAmount showing what percentage of the goal is coming from the user's pocket vs market growth. Bullet 2 must state the inflationAdjustedPrincipal and how much purchasing power is lost over the tenure at ${INFLATION_RATE}% inflation. Bullet 3 must state the realSurplus (targetAmount minus inflationAdjustedPrincipal) to show if the goal actually beats inflation in real terms.`;
             return GLOBAL_AI_INSTRUCTION + "\n\nData:\n" + JSON.stringify(aiData) + "\n\nBullet instructions:\n" + bulletInstructions;
           })()}
         />

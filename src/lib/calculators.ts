@@ -224,10 +224,12 @@ export function calculateStaggeredFD(
 
     // With Reinvestment (Compound Interest)
     // totalTenure = originalTenure + 18 months
-    const totalTenure = tenureMonths + 18;
-    const reinvestedMaturity = amountPerFD * Math.pow(1 + (fdRate / 100 / 12), totalTenure);
+    const totalTenureMonths = tenureMonths + 18;
+    const n_comp = 4; // Quarterly compounding
+    const t_comp = totalTenureMonths / 12;
+    const reinvestedMaturity = amountPerFD * Math.pow(1 + (fdRate / 100 / n_comp), n_comp * t_comp);
     const reinvestedInterest = reinvestedMaturity - amountPerFD;
-    const savingsInterestWithReinvestment = amountPerFD * (savingsRate / 100) * (totalTenure / 12);
+    const savingsInterestWithReinvestment = amountPerFD * (savingsRate / 100) * (totalTenureMonths / 12);
     
     totalReinvestedInterest += reinvestedInterest;
     totalSavingsInterestWithReinvestment += savingsInterestWithReinvestment;
@@ -276,7 +278,7 @@ export function calculateBasicFD(
   const grossInterest = maturityAmount - principal;
   
   // Real Return after Inflation formula: ((1 + r) / (1 + i) - 1) * 100
-  const userRealReturn = ((1 + annualRate / 100) / (1 + 6 / 100) - 1) * 100;
+  const userRealReturn = ((1 + annualRate / 100) / (1 + INFLATION_RATE / 100) - 1) * 100;
   
   return {
     grossInterest: Math.round(grossInterest),
