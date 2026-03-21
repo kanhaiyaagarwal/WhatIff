@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { TrendingUp, Share2, Download, ChevronDown, ArrowRight, Star } from 'lucide-react';
+import { TrendingUp, Share2, Download, ChevronDown, ArrowRight, Star, Info, ShieldCheck } from 'lucide-react';
 import { GLOBAL_AI_INSTRUCTION } from '../../aiInsightPrompt';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -54,6 +54,19 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
   const [barPositions, setBarPositions] = useState<{ x: number; width: number; label: string; index: number }[]>([]);
   const sliderRef = useRef<HTMLDivElement>(null);
 
+  const barLabels = {
+    principal: "Principal",
+    interest: "Interest Earned",
+    inflation: "Lost to Inflation",
+    tax: "Tax Payable",
+    realValue: isTaxExpanded && taxSlab > 0 ? "Real Value at Maturity (Post-Tax)" : "Real Value at Maturity"
+  };
+
+  // Clear bar positions when data structure changes to avoid stale labels
+  useEffect(() => {
+    setBarPositions([]);
+  }, [isTaxExpanded, taxSlab]);
+
   const result = useMemo(() => {
     return calculateBasicFD(principal, fdRate, tenure);
   }, [principal, fdRate, tenure]);
@@ -74,7 +87,7 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
   }, [principal, tenure]);
 
   const taxDetails = useMemo(() => {
-    const threshold = citizenType === 'Senior' ? 100000 : 50000;
+    const threshold = citizenType === 'Senior' ? 50000 : 40000;
     const annualInterest = result.grossInterest * (12 / tenure);
     const tdsDeducted = annualInterest > threshold ? result.grossInterest * 0.1 : 0;
     const totalTax = result.grossInterest * (taxSlab / 100);
@@ -90,7 +103,9 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
       postTaxMaturityAmount: Math.round(result.maturityAmount - totalTax),
       postTaxRate: Math.round(postTaxRate * 100) / 100,
       postTaxRealReturn: Math.round(postTaxRealReturn * 100) / 100,
-      isTDSApplicable: annualInterest > threshold
+      isTDSApplicable: annualInterest > threshold,
+      threshold,
+      annualInterest
     };
   }, [result.grossInterest, tenure, citizenType, taxSlab, principal]);
 
@@ -101,6 +116,8 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
     const realSurplus = result.maturityAmount - inflationAdjustedPrincipal;
     const postTaxMaturity = principal + (result.grossInterest * (1 - taxSlab / 100));
     const realReturnRate = tenureYears > 0 ? (Math.pow(postTaxMaturity / principal, 1 / tenureYears) - 1) * 100 : 0;
+    const threshold = citizenType === 'Senior' ? 50000 : 40000;
+    const annualInterest = result.grossInterest * (12 / tenure);
 
     return {
       principal,
@@ -113,9 +130,11 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
       realReturnRate,
       inflationAdjustedPrincipal,
       purchasingPowerLoss,
-      realSurplus
+      realSurplus,
+      tdsThreshold: threshold,
+      isTDSApplicable: annualInterest > threshold
     };
-  }, [principal, fdRate, tenure, result, taxSlab]);
+  }, [principal, fdRate, tenure, result, taxSlab, citizenType]);
 
   const handleExport = () => {
     exportToExcel(
@@ -164,48 +183,58 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
 
   const donutData = useMemo(() => {
     const base = [
-      { name: 'Principal', value: principal, color: '#52525b' }, // zinc-600
+      { name: barLabels.principal, value: principal, color: '#52525b' }, // zinc-600
     ];
     
     if (isTaxExpanded && taxSlab > 0) {
       const taxAmount = result.grossInterest * (taxSlab / 100);
       const postTaxInterest = result.grossInterest - taxAmount;
-      base.push({ name: 'Interest', value: postTaxInterest, color: '#10b981' }); // emerald-500
-      base.push({ name: 'Tax', value: taxAmount, color: '#f87171' }); // red-400
+      base.push({ name: barLabels.interest, value: postTaxInterest, color: '#10b981' }); // emerald-500
+      base.push({ name: barLabels.tax, value: taxAmount, color: '#f87171' }); // red-400
     } else {
-      base.push({ name: 'Interest', value: result.grossInterest, color: '#10b981' });
+      base.push({ name: barLabels.interest, value: result.grossInterest, color: '#10b981' });
     }
     return base;
-  }, [principal, result.grossInterest, isTaxExpanded, taxSlab]);
+  }, [principal, result.grossInterest, isTaxExpanded, taxSlab, barLabels]);
 
   const waterfallData = useMemo(() => {
     const tenureYears = tenure / 12;
     const inflationRate = INFLATION_RATE / 100;
     const maturityAmount = result.maturityAmount;
-    const realMaturityValue = maturityAmount / Math.pow(1 + inflationRate, tenureYears);
-    const inflationErosion = maturityAmount - realMaturityValue;
     const grossInterest = result.grossInterest;
     
-    const data = [
-      { name: 'Principal', value: principal, fill: '#52525b', label: 'Principal' }, // zinc-600
-      { name: 'Interest Earned', value: grossInterest, fill: '#10b981', label: 'Interest Earned' }, // emerald-500
-      { name: 'Lost to Inflation', value: Math.round(inflationErosion), fill: '#f87171', label: 'Lost to Inflation' }, // red-400
-    ];
-
-    let finalRealValue = realMaturityValue;
+    let inflationErosion;
+    let finalRealValue;
 
     if (isTaxExpanded && taxSlab > 0) {
       const taxAmount = grossInterest * (taxSlab / 100);
-      data.push({ name: 'Tax Payable', value: Math.round(taxAmount), fill: '#fbbf24', label: 'Tax Payable' }); // amber-400
-      finalRealValue = (maturityAmount - taxAmount) / Math.pow(1 + inflationRate, tenureYears);
+      const postTaxMaturity = maturityAmount - taxAmount;
+      const postTaxRealMaturityValue = postTaxMaturity / Math.pow(1 + inflationRate, tenureYears);
+      inflationErosion = postTaxMaturity - postTaxRealMaturityValue;
+      finalRealValue = postTaxRealMaturityValue;
+    } else {
+      const realMaturityValue = maturityAmount / Math.pow(1 + inflationRate, tenureYears);
+      inflationErosion = maturityAmount - realMaturityValue;
+      finalRealValue = realMaturityValue;
+    }
+    
+    const data = [
+      { name: barLabels.principal, value: principal, fill: '#52525b', label: barLabels.principal }, // zinc-600
+      { name: barLabels.interest, value: grossInterest, fill: '#10b981', label: barLabels.interest }, // emerald-500
+      { name: barLabels.inflation, value: Math.round(inflationErosion), fill: '#f87171', label: barLabels.inflation }, // red-400
+    ];
+
+    if (isTaxExpanded && taxSlab > 0) {
+      const taxAmount = grossInterest * (taxSlab / 100);
+      data.push({ name: barLabels.tax, value: Math.round(taxAmount), fill: '#fbbf24', label: barLabels.tax }); // amber-400
     }
 
     const isNegativeReturn = inflationErosion > grossInterest;
     data.push({ 
-      name: 'Real Value at Maturity', 
+      name: barLabels.realValue, 
       value: Math.round(finalRealValue), 
       fill: isNegativeReturn ? '#f87171' : '#10b981',
-      label: 'Real Value at Maturity'
+      label: barLabels.realValue
     });
 
     return data;
@@ -219,7 +248,7 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
     useEffect(() => {
       setBarPositions(prev => {
         const existing = prev.find(p => p.index === index);
-        if (existing && existing.x === x && existing.width === width) return prev;
+        if (existing && existing.x === x && existing.width === width && existing.label === payload.label) return prev;
         const updated = [...prev.filter(p => p.index !== index), { x, width, label: payload.label, index }].sort((a, b) => a.index - b.index);
         return updated;
       });
@@ -344,63 +373,86 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
             footerLabel="Best rates typically between 12–36 months"
           />
 
-          {/* Tax Personalization Section */}
-          <div className="pt-4 border-t border-white/5">
-            <button 
-              onClick={() => setIsTaxExpanded(!isTaxExpanded)}
-              className="flex items-center gap-2 text-zinc-400 hover:text-zinc-200 transition-colors text-[13px] font-medium"
-            >
-              Personalise for my tax situation
-              <ChevronDown className={cn("w-4 h-4 transition-transform", isTaxExpanded && "rotate-180")} />
-            </button>
-            
-            <AnimatePresence>
-              {isTaxExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="pt-6 space-y-6">
-                    <div className="space-y-3">
-                      <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Citizen Type</label>
-                      <div className="flex gap-2">
-                        {['Regular', 'Senior'].map((type) => (
-                          <button
-                            key={type}
-                            onClick={() => setCitizenType(type as any)}
-                            className={cn(
-                              "flex-1 py-2 px-4 rounded-xl text-xs font-bold border transition-all",
-                              citizenType === type 
-                                ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" 
-                                : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700"
-                            )}
-                          >
-                            {type === 'Senior' ? 'Senior Citizen 60+' : 'Regular'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+          <div className="pt-4 border-t border-white/5 space-y-6">
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Citizen Type</label>
+              <div className="flex gap-2">
+                {['Regular', 'Senior'].map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setCitizenType(type as any)}
+                    className={cn(
+                      "flex-1 py-2 px-4 rounded-xl text-xs font-bold border transition-all",
+                      citizenType === type 
+                        ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" 
+                        : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700"
+                    )}
+                  >
+                    {type === 'Senior' ? 'Senior Citizen 60+' : 'Regular'}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-                    <SliderWithInput
-                      label="Effective Tax Rate"
-                      value={taxSlab}
-                      min={0}
-                      max={30}
-                      step={1}
-                      onChange={setTaxSlab}
-                      formatDisplay={(v) => `${v}%`}
-                    />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <div className="pt-4 border-t border-white/5">
+              <button 
+                onClick={() => setIsTaxExpanded(!isTaxExpanded)}
+                className="flex items-center gap-2 text-zinc-400 hover:text-zinc-200 transition-colors text-[13px] font-medium"
+              >
+                Personalise for my tax situation
+                <ChevronDown className={cn("w-4 h-4 transition-transform", isTaxExpanded && "rotate-180")} />
+              </button>
+              
+              <AnimatePresence>
+                {isTaxExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pt-6 space-y-6">
+                      <SliderWithInput
+                        label="Effective Tax Rate"
+                        value={taxSlab}
+                        min={0}
+                        max={30}
+                        step={1}
+                        onChange={setTaxSlab}
+                        formatDisplay={(v) => `${v}%`}
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
 
         {/* Results Card */}
         <div className="glass-card p-8 space-y-8 flex flex-col w-full h-full">
+          {/* TDS Warning Box */}
+          <div>
+            {taxDetails.isTDSApplicable ? (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex gap-2 items-start">
+                <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                  Your total interest of {formatCurrency(result.grossInterest)} exceeds the {formatCurrency(taxDetails.threshold)} TDS threshold for {citizenType === 'Senior' ? 'Senior Citizen' : 'Regular Citizen'} — your bank will deduct TDS at 10%.
+                  {isTaxExpanded && taxSlab > 0 && (
+                    <> TDS is deducted on gross interest before your income tax calculation. Your post-tax interest after your {taxSlab}% slab is {formatCurrency(taxDetails.postTaxInterest)}.</>
+                  )}
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg flex gap-2 items-start">
+                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-emerald-200/80 leading-relaxed">
+                  Your total interest of {formatCurrency(result.grossInterest)} is below the {formatCurrency(taxDetails.threshold)} TDS threshold for {citizenType === 'Senior' ? 'Senior Citizen' : 'Regular Citizen'} — no TDS will be deducted by your bank.
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Gross Interest</p>
@@ -508,6 +560,9 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
               <p className="text-xl md:text-2xl font-bold text-white text-center px-4">
                 {formatIndianRupees(isTaxExpanded && taxSlab > 0 ? taxDetails.postTaxMaturityAmount : result.maturityAmount)}
               </p>
+              {isTaxExpanded && taxSlab > 0 && (
+                <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-widest mt-0.5">post-tax</p>
+              )}
             </div>
           </div>
           <div className="flex justify-center gap-6 mt-4">
@@ -528,15 +583,14 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
           </div>
         </div>
 
-        {/* Chart 2: Waterfall */}
-        <div className="glass-card p-6 min-w-0">
+        <div key={isTaxExpanded && taxSlab > 0 ? "tax-on" : "tax-off"} className="glass-card p-6 min-w-0">
           <h3 className="text-sm font-semibold text-zinc-400 mb-6 uppercase tracking-widest">WHERE YOUR MONEY GOES</h3>
-          <div className="h-[300px] w-full relative flex flex-col">
-            <div className="flex-1 min-h-0 relative">
+          <div className="flex flex-col gap-0">
+            <div className="h-[300px] w-full relative">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart 
                   data={waterfallData} 
-                  margin={{ top: 30, right: 20, bottom: 10, left: 20 }}
+                  margin={{ top: 30, right: 20, bottom: 100, left: 20 }}
                   barSize={48}
                   barCategoryGap="30%"
                 >
@@ -561,6 +615,7 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
                     formatter={(value: number) => [formatIndianRupees(value), '']}
                   />
                   <Bar 
+                    key={`bar-${isTaxExpanded}-${taxSlab}`}
                     dataKey="value" 
                     radius={[4, 4, 0, 0]}
                     shape={<CustomBar />}
@@ -568,61 +623,72 @@ export default function BasicFDCalculator({ onBack, onNavigate }: BasicFDCalcula
                     {waterfallData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.fill} />
                     ))}
-                    <LabelList 
-                      dataKey="value" 
-                      position="top"
-                      offset={8}
-                      formatter={(val: number) => `₹${(val / 100000).toFixed(2)}L`}
-                      fill="#a1a1aa"
-                      fontSize={10}
-                      fontWeight="bold"
-                    />
+                      <LabelList 
+                        dataKey="value" 
+                        position="top"
+                        offset={8}
+                        formatter={(val: number) => {
+                          if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)}Cr`;
+                          if (val >= 100000) return `₹${(val / 100000).toFixed(2)}L`;
+                          return formatIndianRupees(val);
+                        }}
+                        fill="#a1a1aa"
+                        fontSize={10}
+                        fontWeight="bold"
+                      />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
 
               {/* Absolutely Positioned Labels Row */}
-              <div className="absolute bottom-0 left-0 w-full pointer-events-none h-0">
-                {barPositions.map((pos, idx) => {
-                  let labelContent;
-                  if (pos.label === 'Principal' || pos.label === 'Interest Earned') {
-                    labelContent = <span className="whitespace-nowrap">{pos.label}</span>;
-                  } else if (pos.label === 'Lost to Inflation') {
-                    labelContent = (
-                      <>
-                        <span className="block">Lost to</span>
-                        <span className="block">Inflation</span>
-                      </>
-                    );
-                  } else if (pos.label === 'Real Value at Maturity') {
-                    labelContent = (
-                      <>
-                        <span className="block">Real Value</span>
-                        <span className="block">at Maturity</span>
-                      </>
-                    );
-                  } else {
-                    labelContent = <span className="block">{pos.label}</span>;
-                  }
+              <div key={`labels-${isTaxExpanded}-${taxSlab}`} className="absolute bottom-[100px] md:bottom-[80px] left-0 w-full pointer-events-none h-0">
+                {barPositions
+                  .filter(pos => pos.index < waterfallData.length)
+                  .map((pos, idx) => {
+                    const isInflation = pos.label === barLabels.inflation;
+                    const isRealValue = pos.label === barLabels.realValue;
+                    const isPostTax = pos.label.includes('(Post-Tax)');
 
-                  return (
-                    <div 
-                      key={idx} 
-                      className="absolute flex flex-col items-center min-w-[100px]"
-                      style={{ 
-                        left: pos.x + pos.width / 2, 
-                        transform: 'translateX(-50%)',
-                        top: '8px'
-                      }}
-                    >
-                      <span className="text-[10px] text-zinc-500 text-center leading-tight">
-                        {labelContent}
-                      </span>
-                    </div>
-                  );
-                })}
+                    return (
+                      <div 
+                        key={idx} 
+                        className="absolute flex flex-col items-center min-w-[100px]"
+                        style={{ 
+                          left: pos.x + pos.width / 2, 
+                          transform: 'translateX(-50%)',
+                          top: '12px'
+                        }}
+                      >
+                        <div className="md:rotate-0 -rotate-90 md:origin-center origin-center whitespace-nowrap md:whitespace-normal">
+                          <span className="text-[10px] text-zinc-500 text-center leading-tight">
+                            {isInflation ? (
+                              <>
+                                <span className="hidden md:block">{pos.label.split(' ').slice(0, 2).join(' ')}</span>
+                                <span className="hidden md:block">{pos.label.split(' ').slice(2).join(' ')}</span>
+                                <span className="md:hidden">{pos.label}</span>
+                              </>
+                            ) : isRealValue ? (
+                              <>
+                                <span className="hidden md:block">{barLabels.realValue.split(' ').slice(0, 2).join(' ')}</span>
+                                <span className="hidden md:block">{barLabels.realValue.split(' ').slice(2, 4).join(' ')}</span>
+                                {isPostTax && <span className="hidden md:block">(Post-Tax)</span>}
+                                <span className="md:hidden">{pos.label}</span>
+                              </>
+                            ) : (
+                              pos.label
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             </div>
+            {isTaxExpanded && taxSlab > 0 && (
+              <p className="text-[11px] text-zinc-400 mt-3 italic">
+                Real value shown after income tax at {taxSlab}% and adjusted for {INFLATION_RATE}% inflation.
+              </p>
+            )}
           </div>
         </div>
       </div>

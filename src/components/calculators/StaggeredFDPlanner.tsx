@@ -65,8 +65,8 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
   }, [totalAmount, numFDs, fdRate, savingsRate, isReinvested]);
 
   const taxDetails = useMemo(() => {
-    const threshold = citizenType === 'Senior' ? 100000 : 50000;
-    const totalAnnualInterest = result.totalFDInterest; // Assuming the initial ladder represents the annual interest for simplicity
+    const threshold = citizenType === 'Senior' ? 50000 : 40000;
+    const totalAnnualInterest = isReinvested ? result.totalInterestWithReinvestment : result.totalFDInterest;
     const tdsDeducted = totalAnnualInterest > threshold ? totalAnnualInterest * 0.1 : 0;
     const taxRate = taxSlab / 100;
     
@@ -107,9 +107,9 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
     };
   }, [result, citizenType, taxSlab, isReinvested, fdRate]);
 
-  const tdsThreshold = citizenType === 'Senior' ? 100000 : 50000;
-  const formattedThreshold = citizenType === 'Senior' ? '₹1,00,000' : '₹50,000';
-  const interestForTDS = isTaxExpanded && taxSlab > 0 ? taxDetails.postTaxTotalInterest : result.totalFDInterest;
+  const tdsThreshold = citizenType === 'Senior' ? 50000 : 40000;
+  const formattedThreshold = citizenType === 'Senior' ? '₹50,000' : '₹40,000';
+  const interestForTDS = isReinvested ? result.totalInterestWithReinvestment : result.totalFDInterest;
 
   const aiData = useMemo(() => {
     const maxTenure = 12; // Initial ladder is 12 months
@@ -136,9 +136,11 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
       realReturnRate,
       inflationAdjustedPrincipal,
       purchasingPowerLoss,
-      realSurplus
+      realSurplus,
+      tdsThreshold,
+      isTDSApplicable: totalInterest > tdsThreshold
     };
-  }, [totalAmount, numFDs, fdRate, savingsRate, isReinvested, result, taxSlab]);
+  }, [totalAmount, numFDs, fdRate, savingsRate, isReinvested, result, taxSlab, tdsThreshold]);
 
   const handleExport = () => {
     exportToExcel(
@@ -248,70 +250,72 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
               <button
                 onClick={() => setIsReinvested(!isReinvested)}
                 className={cn(
-                  "w-12 h-6 rounded-full transition-colors relative",
+                  "w-11 h-6 rounded-full transition-colors relative flex items-center px-1",
                   isReinvested ? "bg-emerald-500" : "bg-zinc-700"
                 )}
               >
                 <div className={cn(
-                  "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
-                  isReinvested ? "left-7" : "left-1"
+                  "w-4 h-4 rounded-full bg-white transition-transform",
+                  isReinvested ? "translate-x-5" : "translate-x-0"
                 )} />
               </button>
             </div>
 
-            <div className="pt-4 border-t border-white/5">
-              <button 
-                onClick={() => setIsTaxExpanded(!isTaxExpanded)}
-                className="flex items-center gap-2 text-zinc-400 hover:text-zinc-200 transition-colors text-[13px] font-medium"
-              >
-                Tax Settings
-                <ChevronDown className={cn("w-4 h-4 transition-transform", isTaxExpanded && "rotate-180")} />
-              </button>
-              
-              <AnimatePresence>
-                {isTaxExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="pt-6 space-y-6">
-                      <div className="space-y-3">
-                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Citizen Type</label>
-                        <div className="flex gap-2">
-                          {['Regular', 'Senior'].map((type) => (
-                            <button
-                              key={type}
-                              onClick={() => setCitizenType(type as any)}
-                              className={cn(
-                                "flex-1 py-2 px-4 rounded-xl text-xs font-bold border transition-all",
-                                citizenType === type 
-                                  ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" 
-                                  : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700"
-                              )}
-                            >
-                              {type === 'Senior' ? 'Senior Citizen 60+' : 'Regular'}
-                            </button>
-                          ))}
+            <div className="pt-4 border-t border-white/5 space-y-6">
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Citizen Type</label>
+                <div className="flex gap-2">
+                  {['Regular', 'Senior'].map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => setCitizenType(type as any)}
+                      className={cn(
+                        "flex-1 py-2 px-4 rounded-xl text-xs font-bold border transition-all",
+                        citizenType === type 
+                          ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" 
+                          : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700"
+                      )}
+                    >
+                      {type === 'Senior' ? 'Senior Citizen 60+' : 'Regular'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-white/5">
+                <button 
+                  onClick={() => setIsTaxExpanded(!isTaxExpanded)}
+                  className="flex items-center gap-2 text-zinc-400 hover:text-zinc-200 transition-colors text-[13px] font-medium"
+                >
+                  Tax Settings
+                  <ChevronDown className={cn("w-4 h-4 transition-transform", isTaxExpanded && "rotate-180")} />
+                </button>
+                
+                <AnimatePresence>
+                  {isTaxExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="pt-6 space-y-6">
+                        <div className="space-y-4">
+                          <SliderWithInput
+                            label="Effective Tax Rate"
+                            value={taxSlab}
+                            min={0}
+                            max={30}
+                            step={1}
+                            onChange={setTaxSlab}
+                            formatDisplay={(v) => `${v}%`}
+                          />
                         </div>
                       </div>
-
-                      <div className="space-y-4">
-                        <SliderWithInput
-                          label="Effective Tax Rate"
-                          value={taxSlab}
-                          min={0}
-                          max={30}
-                          step={1}
-                          onChange={setTaxSlab}
-                          formatDisplay={(v) => `${v}%`}
-                        />
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
 
@@ -353,13 +357,15 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
               <p className="text-xl font-bold text-white">{formatCurrency(result.amountPerFD)}</p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Total FD Interest</p>
+              <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">{isReinvested ? "TOTAL INTEREST (WITH REINVESTMENT)" : "TOTAL FD INTEREST"}</p>
               <div className="flex flex-wrap items-baseline gap-2">
                 <p className={cn("font-bold", isTaxExpanded ? "text-sm text-zinc-500 line-through" : "text-xl text-emerald-400")}>
-                  {formatCurrency(result.totalFDInterest)}
+                  {formatCurrency(isReinvested ? result.totalInterestWithReinvestment : result.totalFDInterest)}
                 </p>
                 {isTaxExpanded && (
-                  <p className="text-xl font-bold text-emerald-400">{formatCurrency(taxDetails.postTaxTotalInterest)}</p>
+                  <p className="text-xl font-bold text-emerald-400">
+                    {formatCurrency(isReinvested ? taxDetails.postTaxTotalInterestWithReinvestment : taxDetails.postTaxTotalInterest)}
+                  </p>
                 )}
               </div>
             </div>
@@ -367,17 +373,6 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
 
           {isReinvested && (
             <div className="grid grid-cols-2 gap-4 pt-6 border-t border-white/5">
-              <div className="space-y-1">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Interest (Reinvested)</p>
-                <div className="flex flex-wrap items-baseline gap-2">
-                  <p className={cn("font-bold", isTaxExpanded ? "text-sm text-zinc-500 line-through" : "text-xl text-emerald-400")}>
-                    {formatCurrency(result.totalInterestWithReinvestment)}
-                  </p>
-                  {isTaxExpanded && (
-                    <p className="text-xl font-bold text-emerald-400">{formatCurrency(taxDetails.postTaxTotalInterestWithReinvestment)}</p>
-                  )}
-                </div>
-              </div>
               <div className="space-y-1">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Reinvestment Bonus</p>
                 <div className="flex flex-wrap items-baseline gap-2">
@@ -449,14 +444,17 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
               <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex gap-2 items-start">
                 <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                 <p className="text-[11px] text-amber-200/80 leading-relaxed">
-                  Your total interest of {formatCurrency(interestForTDS)} exceeds the {formattedThreshold} TDS threshold — your bank will deduct TDS at 10%.
+                  Your total interest of {formatCurrency(interestForTDS)} exceeds the {formattedThreshold} TDS threshold for {citizenType === 'Senior' ? 'Senior Citizen' : 'Regular Citizen'} — your bank will deduct TDS at 10%.
+                  {isTaxExpanded && taxSlab > 0 && (
+                    <> TDS is deducted on gross interest before your income tax calculation. Your post-tax interest after your {taxSlab}% slab is {formatCurrency(isReinvested ? taxDetails.postTaxTotalInterestWithReinvestment : taxDetails.postTaxTotalInterest)}.</>
+                  )}
                 </p>
               </div>
             ) : (
               <div className="flex items-center gap-2 text-emerald-500">
                 <ShieldCheck className="w-4 h-4" />
                 <p className="text-[11px] font-medium">
-                  Your total interest of {formatCurrency(interestForTDS)} is below the {formattedThreshold} TDS threshold — no TDS will be deducted by your bank.
+                  Your total interest of {formatCurrency(interestForTDS)} is below the {formattedThreshold} TDS threshold for {citizenType === 'Senior' ? 'Senior Citizen' : 'Regular Citizen'} — no TDS will be deducted by your bank.
                 </p>
               </div>
             )}
@@ -495,6 +493,19 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
                   )}
                 </tr>
               ))}
+              <tr className="bg-zinc-800/80 border-t-2 border-white/10">
+                <td className="px-6 py-4 text-xs font-bold text-white uppercase tracking-widest">TOTAL</td>
+                <td className="px-6 py-4"></td>
+                <td className="px-6 py-4"></td>
+                <td className="px-6 py-4"></td>
+                <td className="px-6 py-4 text-sm text-emerald-400 font-bold">{formatCurrency(result.totalFDInterest)}</td>
+                {isTaxExpanded && (
+                  <>
+                    <td className="px-6 py-4 text-sm text-red-400 font-bold">{formatCurrency(result.totalFDInterest * (taxSlab / 100))}</td>
+                    <td className="px-6 py-4 text-sm text-emerald-400 font-bold">{formatCurrency(taxDetails.postTaxTotalInterest)}</td>
+                  </>
+                )}
+              </tr>
             </tbody>
           </table>
         </div>
@@ -552,7 +563,7 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
                   <Pie
                     data={[
                       { name: 'Principal', value: totalAmount },
-                      { name: 'Total Interest', value: result.totalFDInterest }
+                      { name: 'Total Interest', value: isReinvested ? result.totalInterestWithReinvestment : result.totalFDInterest }
                     ]}
                     cx="50%"
                     cy="50%"
@@ -575,7 +586,7 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
             )}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
               <p className="text-2xl md:text-3xl font-bold text-emerald-400">
-                {formatCurrency(result.totalFDInterest)}
+                {formatCurrency(isReinvested ? result.totalInterestWithReinvestment : result.totalFDInterest)}
               </p>
               <p className="text-[11px] text-zinc-400 uppercase font-bold tracking-widest">of corpus</p>
             </div>
@@ -774,7 +785,7 @@ export default function StaggeredFDPlanner({ onBack, initialPrincipal }: Stagger
           return stats;
         })()}
         insight={renderInsight(aiInsight || (isTaxExpanded && taxSlab > 0
-          ? `After ${taxSlab}% tax your staggered FD earns ₹${taxDetails.postTaxTotalInterest} — a post-tax real return of ${taxDetails.postTaxRealReturn}% after ${INFLATION_RATE}% inflation. Keeping the same amount in a savings account would earn ₹${taxDetails.postTaxSavingsInterest} after tax — the staggered strategy puts ₹${taxDetails.postTaxExtraEarned} more in your pocket for zero additional risk.`
+          ? `After ${taxSlab}% tax your staggered FD earns ₹${formatCurrency(isReinvested ? taxDetails.postTaxTotalInterestWithReinvestment : taxDetails.postTaxTotalInterest)} — a post-tax real return of ${taxDetails.postTaxRealReturn}% after ${INFLATION_RATE}% inflation. Keeping the same amount in a savings account would earn ₹${formatCurrency(taxDetails.postTaxSavingsInterest)} after tax — the staggered strategy puts ₹${formatCurrency(taxDetails.postTaxExtraEarned)} more in your pocket for zero additional risk.`
           : (isReinvested 
             ? `Reinvesting each matured FD earns you ${formatCurrency(result.reinvestmentBonus)} extra over the cycle — your emergency fund is now actively compounding while staying liquid every ${result.interval} months.`
             : `Keeping ${formatCurrency(totalAmount)} in a savings account for the same tenure earns ${formatCurrency(result.totalFDInterest - result.extraInterest)}. Your staggered FD strategy earns ${formatCurrency(result.totalFDInterest)} — that's ${formatCurrency(result.extraInterest)} more for doing nothing differently except where you park it.`
