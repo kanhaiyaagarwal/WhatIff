@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
@@ -14,6 +15,29 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+
+  // Gemini API Proxy
+  app.post("/api/gemini", async (req, res) => {
+    const { model, contents, config } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server" });
+    }
+
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: model || "gemini-2.0-flash",
+        contents,
+        config
+      });
+      res.json(response);
+    } catch (error: any) {
+      console.error("Gemini Proxy Error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate content" });
+    }
+  });
 
   // OAuth Configuration
   const GROWW_AUTH_URL = "https://groww.in/oauth/authorize";

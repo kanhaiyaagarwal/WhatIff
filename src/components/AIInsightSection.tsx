@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Loader2, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI } from "@google/genai";
 import { cn } from '../lib/utils';
 import { trackEvent } from '../lib/analytics';
 
@@ -51,11 +50,6 @@ export default function AIInsightSection({
     if (inputs?.isOverInvesting || cooldown > 0) return;
     setIsGenerating(true);
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
-      
-      const ai = new GoogleGenAI({ apiKey });
-      
       const globalInstruction = `
       You are a smart, warm friend who is good with numbers. You are not a financial advisor. You are not telling anyone what to do. You are simply showing people what their own numbers mean — in plain, everyday language that anyone can understand.
       HARD RULES — these override everything:
@@ -133,12 +127,22 @@ export default function AIInsightSection({
 
       const finalPrompt = (customPrompt || promptMap[category]) + currencyFormattingInstruction;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: [{ parts: [{ text: finalPrompt }] }],
+      const response = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: "gemini-2.0-flash",
+          contents: [{ parts: [{ text: finalPrompt }] }]
+        })
       });
-      
-      const text = response.text || "Analysis complete. Review your financial plan for optimal results.";
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate insight');
+      }
+
+      const result = await response.json();
+      const text = result.text || "Analysis complete. Review your financial plan for optimal results.";
       setInsight(text);
       setCooldown(30);
       trackEvent('AI Insight Generated', {
