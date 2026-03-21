@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { 
   LayoutDashboard, 
   TrendingUp, 
@@ -20,26 +20,30 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
-import LandingView from './components/LandingView';
+import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
-import SIPCalculator from './components/calculators/SIPCalculator';
-import EMICalculator from './components/calculators/EMICalculator';
-import GoalPlanner from './components/calculators/GoalPlanner';
-import RetirementCalculator from './components/calculators/RetirementCalculator';
-import LoanAffordability from './components/calculators/LoanAffordability';
-import HomePurchaseCalculator from './components/calculators/HomePurchaseCalculator';
-import StaggeredFDPlanner from './components/calculators/StaggeredFDPlanner';
-import BasicFDCalculator from './components/calculators/BasicFDCalculator';
-import BuyVsRentCalculator from './components/calculators/BuyVsRentCalculator';
-import ComparisonView from './components/ComparisonView';
-import PrivacyPolicy from './components/PrivacyPolicy';
-import TermsOfUse from './components/TermsOfUse';
+
+// Lazy load calculators and other views
+const SIPCalculator = lazy(() => import('./components/calculators/SIPCalculator'));
+const EMICalculator = lazy(() => import('./components/calculators/EMICalculator'));
+const GoalPlanner = lazy(() => import('./components/calculators/GoalPlanner'));
+const RetirementCalculator = lazy(() => import('./components/calculators/RetirementCalculator'));
+const LoanAffordability = lazy(() => import('./components/calculators/LoanAffordability'));
+const HomePurchaseCalculator = lazy(() => import('./components/calculators/HomePurchaseCalculator'));
+const StaggeredFDPlanner = lazy(() => import('./components/calculators/StaggeredFDPlanner'));
+const BasicFDCalculator = lazy(() => import('./components/calculators/BasicFDCalculator'));
+const BuyVsRentCalculator = lazy(() => import('./components/calculators/BuyVsRentCalculator'));
+const ComparisonView = lazy(() => import('./components/ComparisonView'));
+const PrivacyPolicy = lazy(() => import('./components/PrivacyPolicy'));
+const TermsOfUse = lazy(() => import('./components/TermsOfUse'));
+
 import { trackPageView } from './lib/analytics';
 
 export type Screen = 'landing' | 'dashboard' | 'sip' | 'emi' | 'goal' | 'retirement' | 'affordability' | 'home_purchase' | 'staggered_fd' | 'basic_fd' | 'buy_vs_rent' | 'comparison' | 'privacy' | 'terms';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('landing');
+  const [previousScreen, setPreviousScreen] = useState<Screen>('landing');
   const [selectedScenarioIds, setSelectedScenarioIds] = useState<string[]>([]);
   const [sharedState, setSharedState] = useState<any>(null);
 
@@ -48,6 +52,7 @@ export default function App() {
   }, [currentScreen]);
 
   const handleNavigate = (screen: Screen, state?: any) => {
+    setPreviousScreen(currentScreen);
     setSharedState(state);
     setCurrentScreen(screen);
   };
@@ -60,7 +65,7 @@ export default function App() {
   const renderScreen = () => {
     switch (currentScreen) {
       case 'landing':
-        return <LandingView onStart={() => setCurrentScreen('dashboard')} />;
+        return <LandingPage onStart={() => { setPreviousScreen('landing'); setCurrentScreen('dashboard'); }} onNavigate={handleNavigate} />;
       case 'dashboard':
         return <Dashboard onNavigate={handleNavigate} onCompare={handleCompare} />;
       case 'sip':
@@ -84,9 +89,9 @@ export default function App() {
       case 'comparison':
         return <ComparisonView ids={selectedScenarioIds} onBack={() => setCurrentScreen('dashboard')} />;
       case 'privacy':
-        return <PrivacyPolicy onBack={() => setCurrentScreen('dashboard')} />;
+        return <PrivacyPolicy onBack={() => setCurrentScreen(previousScreen)} />;
       case 'terms':
-        return <TermsOfUse onBack={() => setCurrentScreen('dashboard')} />;
+        return <TermsOfUse onBack={() => setCurrentScreen(previousScreen)} />;
       default:
         return <Dashboard onNavigate={handleNavigate} onCompare={handleCompare} />;
     }
@@ -126,48 +131,23 @@ export default function App() {
       {/* Main Content */}
       <main className={cn("flex-1 w-full", (currentScreen !== 'landing' && currentScreen !== 'privacy' && currentScreen !== 'terms') && "max-w-5xl mx-auto p-6")}>
         <AnimatePresence mode="wait">
-          <motion.div
-            key={currentScreen}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-          >
-            {renderScreen()}
-          </motion.div>
+          <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center">
+              <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          }>
+            <motion.div
+              key={currentScreen}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              {renderScreen()}
+            </motion.div>
+          </Suspense>
         </AnimatePresence>
       </main>
-
-      {/* Footer */}
-      {currentScreen !== 'landing' && currentScreen !== 'privacy' && currentScreen !== 'terms' && (
-        <footer className="border-t border-white/5 py-12 bg-zinc-900/30">
-          <div className="max-w-5xl mx-auto px-6 space-y-8">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-8">
-              <div className="space-y-4 text-center md:text-left">
-                <div className="flex items-center justify-center md:justify-start gap-2">
-                  <span className="text-xl font-bold text-white tracking-tight">WhatIff</span>
-                </div>
-                <p className="text-sm text-zinc-500 max-w-xs">
-                  Financial planning tools for the modern investor. Simple, secure, and private.
-                </p>
-              </div>
-
-              <div className="flex flex-col items-center md:items-end gap-6">
-                <div className="flex items-center gap-2 text-zinc-500">
-                  <Lock className="w-4 h-4" />
-                  <span className="text-xs">All calculations happen locally on your device.</span>
-                </div>
-              </div>
-            </div>
-            
-            <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
-              <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">
-                © 2026 WhatIff. All rights reserved.
-              </p>
-            </div>
-          </div>
-        </footer>
-      )}
     </div>
   );
 }

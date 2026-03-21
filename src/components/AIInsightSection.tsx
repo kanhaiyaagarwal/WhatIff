@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sparkles, Loader2, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from "@google/genai";
@@ -19,6 +19,7 @@ interface AIInsightSectionProps {
 }
 
 import { renderInsight } from '../renderInsight';
+import InsightFeedback from './InsightFeedback';
 
 export default function AIInsightSection({
   title,
@@ -34,9 +35,20 @@ export default function AIInsightSection({
 }: AIInsightSectionProps) {
   const [insight, setInsight] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    let timer: any;
+    if (cooldown > 0) {
+      timer = setInterval(() => {
+        setCooldown(prev => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [cooldown]);
 
   const generateAIInsight = async () => {
-    if (inputs?.isOverInvesting) return;
+    if (inputs?.isOverInvesting || cooldown > 0) return;
     setIsGenerating(true);
     try {
       const apiKey = process.env.GEMINI_API_KEY;
@@ -128,6 +140,7 @@ export default function AIInsightSection({
       
       const text = response.text || "Analysis complete. Review your financial plan for optimal results.";
       setInsight(text);
+      setCooldown(30);
       trackEvent('AI Insight Generated', {
         'Category': category,
         'Title': title,
@@ -170,7 +183,7 @@ export default function AIInsightSection({
             
             <button
               onClick={generateAIInsight}
-              disabled={isGenerating}
+              disabled={isGenerating || cooldown > 0}
               className={cn(
                 "w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 shadow-lg",
                 "bg-emerald-500 text-zinc-950 hover:bg-emerald-400 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed",
@@ -179,6 +192,8 @@ export default function AIInsightSection({
             >
               {isGenerating ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
+              ) : cooldown > 0 ? (
+                <span className="text-xs font-bold">{cooldown}s</span>
               ) : (
                 <Sparkles className="w-5 h-5" />
               )}
@@ -195,6 +210,12 @@ export default function AIInsightSection({
               >
                 <div className="space-y-4 pt-4 border-t border-white/5">
                   {renderInsight(insight)}
+                  <div className="pt-4 border-t border-white/5">
+                    <InsightFeedback 
+                      calculator={title} 
+                      insight={insight} 
+                    />
+                  </div>
                 </div>
               </motion.div>
             )}

@@ -151,6 +151,15 @@ export default function TermsOfUse({ onBack }: TermsOfUseProps) {
               These Terms of Use together with our Privacy Policy constitute the entire agreement between you and WhatIff regarding your use of the application.
             </p>
           </section>
+
+          <section>
+            <h2 className="text-[15px] font-[700] text-white mb-2 mt-7">15. Contact</h2>
+            <p className="text-[14px] text-zinc-400 leading-[1.8]">
+              Questions about these Terms of Use? Write to us at <a href="mailto:hello.whatiff@gmail.com" style={{ color: '#10b981', textDecoration: 'none' }}>
+                hello.whatiff@gmail.com
+              </a>. We will respond at our earliest.
+            </p>
+          </section>
         </div>
 
         {/* Footer */}

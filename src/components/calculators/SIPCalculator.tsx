@@ -27,16 +27,45 @@ import SliderWithInput from '../SliderWithInput';
 
 interface SIPCalculatorProps {
   onBack: () => void;
+  isEmbedded?: boolean;
+  onValuesChange?: (values: { monthlyInvestment: number; annualRate: number; years: number; stepUp: number }) => void;
 }
 
-export default function SIPCalculator({ onBack }: SIPCalculatorProps) {
+export default function SIPCalculator({ onBack, isEmbedded = false, onValuesChange }: SIPCalculatorProps) {
   const [monthlyInvestment, setMonthlyInvestment] = useState(5000);
   const [annualRate, setAnnualRate] = useState(12);
   const [years, setYears] = useState(10);
   const [stepUp, setStepUp] = useState(0);
+
+  useEffect(() => {
+    if (onValuesChange) {
+      onValuesChange({ monthlyInvestment, annualRate, years, stepUp });
+    }
+  }, [monthlyInvestment, annualRate, years, stepUp, onValuesChange]);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [aiInsight, setAiInsight] = useState<string>('');
   const [chartReady, setChartReady] = useState(false);
+  const [showPreFillPill, setShowPreFillPill] = useState(false);
+
+  useEffect(() => {
+    const preFill = localStorage.getItem('sipPreFill');
+    if (preFill) {
+      try {
+        const data = JSON.parse(preFill);
+        if (data.source === 'landing') {
+          setMonthlyInvestment(data.monthlyInvestment);
+          setAnnualRate(data.expectedReturn);
+          setYears(data.timePeriod);
+          if (data.stepUp > 0) setStepUp(data.stepUp);
+          setShowPreFillPill(true);
+          localStorage.removeItem('sipPreFill');
+          setTimeout(() => setShowPreFillPill(false), 3000);
+        }
+      } catch (e) {
+        localStorage.removeItem('sipPreFill');
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => setChartReady(true), 50);
@@ -106,39 +135,60 @@ export default function SIPCalculator({ onBack }: SIPCalculatorProps) {
   }, [monthlyInvestment, annualRate, years, stepUp]);
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <TrendingUp className="w-6 h-6 text-emerald-500" />
-            SIP Calculator
-          </h2>
-          <p className="text-zinc-500 text-sm">Systematic Investment Plan growth projection.</p>
+    <div className={cn("space-y-8", isEmbedded && "space-y-6 p-0 m-0")}>
+      {showPreFillPill && (
+        <div 
+          style={{ 
+            background: 'rgba(16,185,129,0.1)', 
+            border: '1px solid rgba(16,185,129,0.2)', 
+            color: '#10b981', 
+            borderRadius: '99px', 
+            padding: '6px 14px', 
+            fontSize: '11px', 
+            fontWeight: 600, 
+            textAlign: 'center', 
+            marginBottom: '16px',
+            opacity: 1,
+            transition: 'opacity 0.5s'
+          }}
+        >
+          ✦ Values carried over from your landing page session
         </div>
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={handleExport}
-            className="p-2 hover:bg-white/5 rounded-full text-zinc-400 hover:text-white transition-colors"
-            title="Export to Excel"
-          >
-            <Download className="w-5 h-5" />
-          </button>
-          <SaveScenarioButton 
-            type="sip" 
-            inputs={{ monthlyInvestment, annualRate, years, stepUp }} 
-            outputs={{ 
-              ...result, 
-              mainResult: isFinite(result.futureValue) ? result.futureValue : 0 
-            }} 
-          />
-          <button 
-            onClick={() => setIsShareOpen(true)}
-            className="p-2 hover:bg-white/5 rounded-full text-zinc-400 hover:text-white transition-colors"
-          >
-            <Share2 className="w-5 h-5" />
-          </button>
+      )}
+      {!isEmbedded && (
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <TrendingUp className="w-6 h-6 text-emerald-500" />
+              SIP Calculator
+            </h2>
+            <p className="text-zinc-500 text-sm">Systematic Investment Plan growth projection.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleExport}
+              className="p-2 hover:bg-white/5 rounded-full text-zinc-400 hover:text-white transition-colors"
+              title="Export to Excel"
+            >
+              <Download className="w-5 h-5" />
+            </button>
+            <SaveScenarioButton 
+              type="sip" 
+              inputs={{ monthlyInvestment, annualRate, years, stepUp }} 
+              outputs={{ 
+                ...result, 
+                mainResult: isFinite(result.futureValue) ? result.futureValue : 0 
+              }} 
+            />
+            <button 
+              onClick={() => setIsShareOpen(true)}
+              className="p-2 hover:bg-white/5 rounded-full text-zinc-400 hover:text-white transition-colors"
+            >
+              <Share2 className="w-5 h-5" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
         {/* Controls */}
@@ -194,16 +244,16 @@ export default function SIPCalculator({ onBack }: SIPCalculatorProps) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Invested Amount</p>
-                <p className="text-xl font-bold text-white">{formatCurrency(result.totalInvestment)}</p>
+                <p className={cn("font-bold text-white", isEmbedded ? "text-lg" : "text-xl")}>{formatCurrency(result.totalInvestment)}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Est. Returns</p>
-                <p className="text-xl font-bold text-emerald-400">+{formatCurrency(result.totalEarnings)}</p>
+                <p className={cn("font-bold text-emerald-400", isEmbedded ? "text-lg" : "text-xl")}>+{formatCurrency(result.totalEarnings)}</p>
               </div>
             </div>
             <div className="pt-6 border-t border-white/5">
               <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold mb-1">Total Value</p>
-              <p className="text-4xl font-bold text-white">{formatCurrency(result.futureValue)}</p>
+              <p className={cn("font-bold text-white", isEmbedded ? "text-2xl" : "text-4xl")}>{formatCurrency(result.futureValue)}</p>
             </div>
           </div>
 
@@ -215,12 +265,12 @@ export default function SIPCalculator({ onBack }: SIPCalculatorProps) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Purchasing Power Lost</p>
-                <p className="text-xl font-bold text-amber-400">{formatCurrency(result.purchasingPowerLost)}</p>
+                <p className={cn("font-bold text-amber-400", isEmbedded ? "text-lg" : "text-xl")}>{formatCurrency(result.purchasingPowerLost)}</p>
                 <p className="text-[10px] text-zinc-500">Eroded by 6% annual inflation</p>
               </div>
               <div className="space-y-1">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Real Returns</p>
-                <p className={cn("text-xl font-bold", result.realReturns >= 0 ? "text-emerald-400" : "text-red-400")}>
+                <p className={cn("font-bold", result.realReturns >= 0 ? "text-emerald-400" : "text-red-400", isEmbedded ? "text-lg" : "text-xl")}>
                   {result.realReturns >= 0 ? '+' : ''}{formatCurrency(result.realReturns)}
                 </p>
                 <p className="text-[10px] text-zinc-500">Actual gain above inflation</p>
@@ -228,152 +278,157 @@ export default function SIPCalculator({ onBack }: SIPCalculatorProps) {
             </div>
             <div className="pt-6 border-t border-amber-400/10">
               <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold mb-1">Real Corpus</p>
-              <p className="text-4xl font-bold text-emerald-400">{formatCurrency(result.realCorpus)}</p>
+              <p className={cn("font-bold text-emerald-400", isEmbedded ? "text-2xl" : "text-4xl")}>{formatCurrency(result.realCorpus)}</p>
               <p className="text-[10px] text-zinc-500 mt-1">What {formatCurrency(result.futureValue)} will buy at today's prices</p>
             </div>
           </div>
 
-          <p className="text-[11px] text-zinc-500 leading-relaxed px-2">
-            Nominal value is the raw rupee amount. Real value is what that amount can actually buy at today's prices. Assumes 6% annual inflation — India's 10-year CPI average.
-          </p>
-          
-          <InfoBox 
-            level={riskLevel}
-            message="Based on historical data, a diversified equity portfolio often yields 12-15% over long periods (10+ years)."
-            className="w-full mt-auto"
-          />
-        </div>
-      </div>
-
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Growth Chart */}
-        <div className="glass-card p-6 min-w-0">
-          <h3 className="text-sm font-semibold text-zinc-400 mb-6 uppercase tracking-widest">Growth Projection</h3>
-          <div className="h-[300px] w-full" style={{ minWidth: 0, minHeight: 300 }}>
-            {chartReady && (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={result.yearlyData}>
-                  <defs>
-                    <linearGradient id="colorValueSIP" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis 
-                    dataKey="year" 
-                    stroke="#52525b" 
-                    fontSize={12} 
-                    tickLine={false} 
-                    axisLine={false}
-                    label={{ value: 'Years', position: 'insideBottom', offset: -5, fill: '#52525b', fontSize: 10 }}
-                  />
-                  <YAxis 
-                    stroke="#52525b" 
-                    fontSize={10} 
-                    tickLine={false} 
-                    axisLine={false}
-                    tickFormatter={(val) => formatCompactNumber(val)}
-                  />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
-                    formatter={(value: number, name: string) => {
-                      const label = name === 'balance' ? 'Total Value' : 
-                                  name === 'investment' ? 'Invested Amount' : 
-                                  name === 'realBalance' ? "Real Value (Today's ₹)" : name;
-                      return [formatCurrency(value), label];
-                    }}
-                    labelFormatter={(label) => `Year ${label}`}
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="balance" 
-                    stroke="#10b981" 
-                    strokeWidth={3}
-                    fillOpacity={1} 
-                    fill="url(#colorValueSIP)" 
-                    name="balance"
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="realBalance" 
-                    stroke="#fbbf24" 
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    fill="transparent"
-                    name="realBalance"
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="investment" 
-                    stroke="#3f3f46" 
-                    strokeWidth={2}
-                    fill="transparent"
-                    name="investment"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        {/* Donut Chart */}
-        <div className="glass-card p-6 min-w-0">
-          <h3 className="text-sm font-semibold text-zinc-400 mb-6 uppercase tracking-widest">Wealth Breakdown</h3>
-          <div className="h-[300px] w-full relative flex items-center justify-center" style={{ minWidth: 0, minHeight: 300 }}>
-            {chartReady && (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: 'Principal', value: result.totalInvestment },
-                      { name: 'Real Gain', value: Math.max(0, result.realReturns) },
-                      { name: 'Lost to Inflation', value: result.purchasingPowerLost }
-                    ]}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={80}
-                    outerRadius={100}
-                    paddingAngle={5}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    <Cell fill="#52525b" />
-                    <Cell fill="#10b981" />
-                    <Cell fill="#fbbf24" />
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
-                    itemStyle={{ color: '#fff' }}
-                    formatter={(value: number) => [formatCurrency(value), '']}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <p className="text-2xl font-bold text-white">
-                {formatCurrency(result.futureValue)}
+          {!isEmbedded && (
+            <>
+              <p className="text-[11px] text-zinc-500 leading-relaxed px-2">
+                Nominal value is the raw rupee amount. Real value is what that amount can actually buy at today's prices. Assumes 6% annual inflation — India's 10-year CPI average.
               </p>
-              <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Total Value</p>
+              
+              <InfoBox 
+                level={riskLevel}
+                message="Based on historical data, a diversified equity portfolio often yields 12-15% over long periods (10+ years)."
+                className="w-full mt-auto"
+              />
+            </>
+          )}
+        </div>
+      </div>
+
+      {!isEmbedded && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Growth Chart */}
+          <div className="glass-card p-6 min-w-0">
+            <h3 className="text-sm font-semibold text-zinc-400 mb-6 uppercase tracking-widest">Growth Projection</h3>
+            <div className="h-[300px] w-full" style={{ minWidth: 0, minHeight: 300 }}>
+              {chartReady && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={result.yearlyData}>
+                    <defs>
+                      <linearGradient id="colorValueSIP" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis 
+                      dataKey="year" 
+                      stroke="#52525b" 
+                      fontSize={12} 
+                      tickLine={false} 
+                      axisLine={false}
+                      label={{ value: 'Years', position: 'insideBottom', offset: -5, fill: '#52525b', fontSize: 10 }}
+                    />
+                    <YAxis 
+                      stroke="#52525b" 
+                      fontSize={10} 
+                      tickLine={false} 
+                      axisLine={false}
+                      tickFormatter={(val) => formatCompactNumber(val)}
+                    />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
+                      formatter={(value: number, name: string) => {
+                        const label = name === 'balance' ? 'Total Value' : 
+                                    name === 'investment' ? 'Invested Amount' : 
+                                    name === 'realBalance' ? "Real Value (Today's ₹)" : name;
+                        return [formatCurrency(value), label];
+                      }}
+                      labelFormatter={(label) => `Year ${label}`}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="balance" 
+                      stroke="#10b981" 
+                      strokeWidth={3}
+                      fillOpacity={1} 
+                      fill="url(#colorValueSIP)" 
+                      name="balance"
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="realBalance" 
+                      stroke="#fbbf24" 
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      fill="transparent"
+                      name="realBalance"
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="investment" 
+                      stroke="#3f3f46" 
+                      strokeWidth={2}
+                      fill="transparent"
+                      name="investment"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
-          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 mt-4">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-zinc-600" />
-              <span className="text-[11px] text-zinc-400">Principal: {formatCurrency(result.totalInvestment)}</span>
+
+          {/* Donut Chart */}
+          <div className="glass-card p-6 min-w-0">
+            <h3 className="text-sm font-semibold text-zinc-400 mb-6 uppercase tracking-widest">Wealth Breakdown</h3>
+            <div className="h-[300px] w-full relative flex items-center justify-center" style={{ minWidth: 0, minHeight: 300 }}>
+              {chartReady && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: 'Principal', value: result.totalInvestment },
+                        { name: 'Real Gain', value: Math.max(0, result.realReturns) },
+                        { name: 'Lost to Inflation', value: result.purchasingPowerLost }
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={80}
+                      outerRadius={100}
+                      paddingAngle={5}
+                      dataKey="value"
+                      stroke="none"
+                    >
+                      <Cell fill="#52525b" />
+                      <Cell fill="#10b981" />
+                      <Cell fill="#fbbf24" />
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
+                      itemStyle={{ color: '#fff' }}
+                      formatter={(value: number) => [formatCurrency(value), '']}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <p className="text-2xl font-bold text-white">
+                  {formatCurrency(result.futureValue)}
+                </p>
+                <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Total Value</p>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-emerald-500" />
-              <span className="text-[11px] text-zinc-400">Real Gain: {formatCurrency(result.realReturns)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-amber-400" />
-              <span className="text-[11px] text-zinc-400">Lost to Inflation: {formatCurrency(result.purchasingPowerLost)}</span>
+            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 mt-4">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-zinc-600" />
+                <span className="text-[11px] text-zinc-400">Principal: {formatCurrency(result.totalInvestment)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                <span className="text-[11px] text-zinc-400">Real Gain: {formatCurrency(result.realReturns)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-amber-400" />
+                <span className="text-[11px] text-zinc-400">Lost to Inflation: {formatCurrency(result.purchasingPowerLost)}</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       <AIInsightSection 
         title="Wealth Growth Vision"
@@ -396,26 +451,28 @@ export default function SIPCalculator({ onBack }: SIPCalculatorProps) {
       />
 
       {/* Investment Platforms */}
-      <InvestmentBrokerSection />
+      {!isEmbedded && <InvestmentBrokerSection />}
 
-      <ShareVision 
-        isOpen={isShareOpen}
-        onClose={() => setIsShareOpen(false)}
-        title="Wealth Growth Vision"
-        description={`Your SIP of ${formatCurrency(monthlyInvestment)} could grow to ${formatCurrency(result.futureValue)} in ${years} years.`}
-        mainValue={result.futureValue}
-        mainLabel="Future Value"
-        secondaryValues={[
-          { label: 'Total Invested', value: result.totalInvestment },
-          { label: 'Real Corpus', value: result.realCorpus },
-          { label: 'Power Lost', value: result.purchasingPowerLost },
-          { label: 'Real Returns', value: result.realReturns }
-        ]}
-        insight={renderInsight(aiInsight || `At ${annualRate}% returns, your wealth compounds significantly. However, 6% inflation will erode ${formatCurrency(result.purchasingPowerLost)} of your purchasing power.`)}
-        category="grow"
-        inputs={{ monthlyInvestment, annualRate, years, stepUp, realCorpus: result.realCorpus, purchasingPowerLost: result.purchasingPowerLost, realReturns: result.realReturns }}
-        onSave={() => setIsShareOpen(false)}
-      />
+      {!isEmbedded && (
+        <ShareVision 
+          isOpen={isShareOpen}
+          onClose={() => setIsShareOpen(false)}
+          title="Wealth Growth Vision"
+          description={`Your SIP of ${formatCurrency(monthlyInvestment)} could grow to ${formatCurrency(result.futureValue)} in ${years} years.`}
+          mainValue={result.futureValue}
+          mainLabel="Future Value"
+          secondaryValues={[
+            { label: 'Total Invested', value: result.totalInvestment },
+            { label: 'Real Corpus', value: result.realCorpus },
+            { label: 'Power Lost', value: result.purchasingPowerLost },
+            { label: 'Real Returns', value: result.realReturns }
+          ]}
+          insight={renderInsight(aiInsight || `At ${annualRate}% returns, your wealth compounds significantly. However, 6% inflation will erode ${formatCurrency(result.purchasingPowerLost)} of your purchasing power.`)}
+          category="grow"
+          inputs={{ monthlyInvestment, annualRate, years, stepUp, realCorpus: result.realCorpus, purchasingPowerLost: result.purchasingPowerLost, realReturns: result.realReturns }}
+          onSave={() => setIsShareOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -105,6 +105,10 @@ export default function BrokerSection({ type = 'general' }: BrokerSectionProps) 
                   alt={broker.name} 
                   className="w-full h-full object-contain"
                   referrerPolicy="no-referrer"
+                  loading="lazy"
+                  decoding="async"
+                  width="40"
+                  height="40"
                 />
               </div>
               <div className="flex items-center gap-1 bg-yellow-500/10 px-1.5 py-0.5 rounded text-[10px] font-bold text-yellow-500">

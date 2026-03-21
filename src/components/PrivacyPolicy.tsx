@@ -122,6 +122,15 @@ export default function PrivacyPolicy({ onBack }: PrivacyPolicyProps) {
               If we update this policy we will update the date at the top of this page. Continued use of WhatIff after any update means you accept the revised policy. We encourage you to review this page periodically.
             </p>
           </section>
+
+          <section>
+            <h2 className="text-[15px] font-[700] text-white mb-2 mt-7">13. Contact</h2>
+            <p className="text-[14px] text-zinc-400 leading-[1.8]">
+              Questions about this Privacy Policy or how we handle data? Write to us at <a href="mailto:hello.whatiff@gmail.com" style={{ color: '#10b981', textDecoration: 'none' }}>
+                hello.whatiff@gmail.com
+              </a>. We will respond at our earliest.
+            </p>
+          </section>
         </div>
 
         {/* Footer */}

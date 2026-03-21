@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   TrendingUp, 
   CreditCard, 
@@ -21,6 +21,7 @@ import { cn, formatCurrency } from '../lib/utils';
 import { storage, SavedScenario } from '../lib/storage';
 import DisclaimerModal from './DisclaimerModal';
 import TypewriterText from './TypewriterText';
+import InsightFeedback from './InsightFeedback';
 
 interface DashboardProps {
   onNavigate: (screen: Screen) => void;
@@ -116,6 +117,134 @@ export default function Dashboard({ onNavigate, onCompare }: DashboardProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false);
   const [showPills, setShowPills] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationFrameId: number;
+    
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Animation objects
+    const coins = Array.from({ length: 6 }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      size: 20 + Math.random() * 20,
+      rotation: Math.random() * Math.PI * 2,
+      rotationSpeed: (Math.random() - 0.5) * 0.02,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: (Math.random() - 0.5) * 0.5,
+      color: ['#10b981', '#8b5cf6', '#06b6d4'][Math.floor(Math.random() * 3)]
+    }));
+
+    const shapes = Array.from({ length: 8 }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      size: 15 + Math.random() * 25,
+      type: ['triangle', 'square', 'hexagon'][Math.floor(Math.random() * 3)],
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.3,
+      rotation: Math.random() * Math.PI * 2,
+      rotationSpeed: (Math.random() - 0.5) * 0.01,
+    }));
+
+    const orbs = [
+      { x: canvas.width * 0.2, y: canvas.height * 0.3, color: '#10b981', size: 300 },
+      { x: canvas.width * 0.8, y: canvas.height * 0.7, color: '#8b5cf6', size: 350 },
+      { x: canvas.width * 0.5, y: canvas.height * 0.5, color: '#06b6d4', size: 250 }
+    ];
+
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw Orbs
+      orbs.forEach(orb => {
+        const gradient = ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, orb.size);
+        gradient.addColorStop(0, orb.color + '15'); // Very low opacity
+        gradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      });
+
+      // Draw Graph Line
+      ctx.beginPath();
+      ctx.strokeStyle = '#10b98120';
+      ctx.lineWidth = 2;
+      ctx.moveTo(0, canvas.height * 0.8);
+      for (let i = 0; i < canvas.width; i += 50) {
+        ctx.lineTo(i, canvas.height * (0.8 - (i / canvas.width) * 0.5 + Math.sin(i * 0.01) * 0.05));
+      }
+      ctx.stroke();
+
+      // Draw Coins
+      coins.forEach(coin => {
+        ctx.save();
+        ctx.translate(coin.x, coin.y);
+        ctx.rotate(coin.rotation);
+        ctx.strokeStyle = coin.color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, coin.size, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.font = `${coin.size}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = coin.color;
+        ctx.fillText('₹', 0, 0);
+        ctx.restore();
+
+        coin.x = (coin.x + coin.vx + canvas.width) % canvas.width;
+        coin.y = (coin.y + coin.vy + canvas.height) % canvas.height;
+        coin.rotation += coin.rotationSpeed;
+      });
+
+      // Draw Shapes
+      shapes.forEach(shape => {
+        ctx.save();
+        ctx.translate(shape.x, shape.y);
+        ctx.rotate(shape.rotation);
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (shape.type === 'triangle') {
+          ctx.moveTo(0, -shape.size);
+          ctx.lineTo(shape.size, shape.size);
+          ctx.lineTo(-shape.size, shape.size);
+          ctx.closePath();
+        } else if (shape.type === 'square') {
+          ctx.rect(-shape.size/2, -shape.size/2, shape.size, shape.size);
+        } else {
+          for (let i = 0; i < 6; i++) {
+            ctx.lineTo(shape.size * Math.cos(i * Math.PI / 3), shape.size * Math.sin(i * Math.PI / 3));
+          }
+          ctx.closePath();
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        shape.x = (shape.x + shape.vx + canvas.width) % canvas.width;
+        shape.y = (shape.y + shape.vy + canvas.height) % canvas.height;
+        shape.rotation += shape.rotationSpeed;
+      });
+
+      animationFrameId = requestAnimationFrame(draw);
+    };
+
+    draw();
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
 
   useEffect(() => {
     setSavedScenarios(storage.getScenarios());
@@ -136,48 +265,32 @@ export default function Dashboard({ onNavigate, onCompare }: DashboardProps) {
   };
 
   return (
-    <div className="space-y-12">
-      {/* Hero Section */}
-      <section className="text-center space-y-2 pt-8 pb-12 relative">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 mb-2">
-          <ShieldCheck className="w-4 h-4 text-zinc-400" />
-          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">No login, no sign up, no BS.</span>
-        </div>
-        <div className="space-y-10">
-          <TypewriterText 
-            text1="Know your numbers." 
-            text2="Own your future." 
-            onComplete={() => setShowPills(true)}
-          />
-          
-          <AnimatePresence>
-            {showPills && (
-              <motion.div 
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                className="flex flex-wrap justify-center gap-[24px]"
-              >
-                <div className="px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 text-[12px] font-medium flex items-center gap-2">
-                  <span>📊</span> Export to Excel
-                </div>
-                <div className="px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 text-[12px] font-medium flex items-center gap-2">
-                  <span>⚡</span> Compare Scenarios
-                </div>
-                <div className="px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 text-[12px] font-medium flex items-center gap-2">
-                  <span>📲</span> Share Your Vision
-                </div>
-                <div className="px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 text-[12px] font-medium flex items-center gap-2">
-                  <span>🤖</span> AI Insights
-                </div>
-                <div className="px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 text-[12px] font-medium flex items-center gap-2">
-                  <span>🏦</span> Execute Your Plan
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </section>
+    <div className="relative min-h-screen">
+      {/* Background Animation */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        <canvas 
+          ref={canvasRef} 
+          className="absolute inset-0 w-full h-full"
+        />
+        <div 
+          className="absolute inset-0"
+          style={{ 
+            background: 'radial-gradient(circle at center, rgba(9,9,11,0.3) 0%, rgba(9,9,11,0.85) 100%)'
+          }}
+        />
+      </div>
+
+      <div className="relative z-10 space-y-12">
+        {/* Hero Section */}
+        <section className="text-center space-y-2 pt-8 pb-12 relative">
+          <div className="space-y-10">
+            <TypewriterText 
+              text1="Know your numbers." 
+              text2="Own your future." 
+              onComplete={() => setShowPills(true)}
+            />
+          </div>
+        </section>
 
       {/* Hero Image Section */}
       <div className="relative w-full overflow-hidden -my-4">
@@ -195,6 +308,10 @@ export default function Dashboard({ onNavigate, onCompare }: DashboardProps) {
           alt="Crystal Tree" 
           className="w-full h-[55vh] md:h-[45vh] object-cover object-center block"
           referrerPolicy="no-referrer"
+          decoding="async"
+          fetchPriority="high"
+          width="1920"
+          height="1080"
           onError={(e) => e.currentTarget.style.display = 'none'}
         />
       </div>
@@ -331,21 +448,15 @@ export default function Dashboard({ onNavigate, onCompare }: DashboardProps) {
         </section>
       )}
       
-      <div className="pt-12 pb-8 flex justify-center items-center gap-3">
-        <button 
-          onClick={() => onNavigate('privacy')}
-          className="text-[12px] text-zinc-500 hover:text-white transition-colors"
-        >
-          Privacy Policy
-        </button>
-        <span className="text-zinc-700 text-[12px]">·</span>
-        <button 
-          onClick={() => onNavigate('terms')}
-          className="text-[12px] text-zinc-500 hover:text-white transition-colors"
-        >
-          Terms of Use
-        </button>
       </div>
+      
+      {/* Footer Feedback */}
+      <footer className="relative z-10 py-12 flex justify-center">
+        <InsightFeedback 
+          calculator="Dashboard" 
+          isDashboard={true} 
+        />
+      </footer>
     </div>
   );
 }
