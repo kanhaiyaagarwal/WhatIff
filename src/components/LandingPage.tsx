@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { motion } from 'motion/react';
-import SIPCalculator from './calculators/SIPCalculator';
+
+const SIPCalculator = lazy(() => import('./calculators/SIPCalculator'));
 
 interface LandingPageProps {
   onStart: () => void;
@@ -338,9 +339,20 @@ export default function LandingPage({ onStart, onNavigate }: LandingPageProps) {
           border: '1px solid rgba(16,185,129,0.2)',
           borderRadius: '20px',
           padding: '32px 28px',
-          boxShadow: '0 0 40px rgba(16,185,129,0.08)'
+          boxShadow: '0 0 40px rgba(16,185,129,0.08)',
+          minHeight: '400px', // Add min-height to prevent layout shift
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center'
         }}>
-          <SIPCalculator isEmbedded={true} onBack={() => {}} onValuesChange={setSipValues} />
+          <Suspense fallback={
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+              <div style={{ width: '32px', height: '32px', border: '3px solid #10b981', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          }>
+            <SIPCalculator isEmbedded={true} onBack={() => {}} onValuesChange={setSipValues} />
+          </Suspense>
           
           <button 
             onClick={handleFullBreakdown}

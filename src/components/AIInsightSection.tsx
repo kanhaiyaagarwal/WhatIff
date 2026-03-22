@@ -48,6 +48,7 @@ export default function AIInsightSection({
 
   const generateAIInsight = async () => {
     if (inputs?.isOverInvesting || cooldown > 0) return;
+
     setIsGenerating(true);
     try {
       const globalInstruction = `
@@ -127,22 +128,25 @@ export default function AIInsightSection({
 
       const finalPrompt = (customPrompt || promptMap[category]) + currencyFormattingInstruction;
 
-      const response = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash",
-          contents: [{ parts: [{ text: finalPrompt }] }]
-        })
-      });
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: finalPrompt }] }]
+          })
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate insight');
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
 
-      const result = await response.json();
-      const text = result.text || "Analysis complete. Review your financial plan for optimal results.";
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Analysis complete. Review your financial plan for optimal results.";
       setInsight(text);
       setCooldown(30);
       trackEvent('AI Insight Generated', {

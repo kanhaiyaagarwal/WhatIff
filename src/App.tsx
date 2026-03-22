@@ -20,8 +20,10 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
-import LandingPage from './components/LandingPage';
-import Dashboard from './components/Dashboard';
+
+// Lazy load main views
+const LandingPage = lazy(() => import('./components/LandingPage'));
+const Dashboard = lazy(() => import('./components/Dashboard'));
 
 // Lazy load calculators and other views
 const SIPCalculator = lazy(() => import('./components/calculators/SIPCalculator'));
