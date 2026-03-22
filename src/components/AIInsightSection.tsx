@@ -50,8 +50,7 @@ export default function AIInsightSection({
     if (inputs?.isOverInvesting || cooldown > 0) return;
 
     setIsGenerating(true);
-    try {
-      const globalInstruction = `
+    const globalInstruction = `
       You are a smart, warm friend who is good with numbers. You are not a financial advisor. You are not telling anyone what to do. You are simply showing people what their own numbers mean — in plain, everyday language that anyone can understand.
       HARD RULES — these override everything:
 
@@ -63,7 +62,7 @@ export default function AIInsightSection({
       Any external benchmark used must be clearly labelled as an approximate benchmark — never stated as a fact about the user personally
       Write like you are explaining something to a smart friend who has never studied finance — no jargon, no technical terms, no complex sentences
       If you must use a financial term explain it immediately in plain language in the same sentence
-
+      
       LANGUAGE RULES:
 
       Use short sentences. One idea per sentence.
@@ -126,43 +125,92 @@ export default function AIInsightSection({
       - Always prefix with ₹.
       - Never display raw whole numbers for currency.`;
 
-      const finalPrompt = (customPrompt || promptMap[category]) + currencyFormattingInstruction;
-
+      const basePrompt = (customPrompt || promptMap[category]) + currencyFormattingInstruction;
+      const finalPrompt = `${basePrompt}\n\nIMPORTANT: Return exactly 3 short paragraphs. Each paragraph must be 1–2 complete sentences. Each paragraph must end with proper punctuation. Do not cut sentences midway.`;
+      
+      const errorMsg = "Unable to generate insight at the moment. Please try again.";
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: finalPrompt }] }]
-          })
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      
+      if (!apiKey || apiKey === 'undefined' || apiKey.trim() === '') {
+        console.error('Gemini API Key is missing or invalid');
+        setInsight(errorMsg);
+        setIsGenerating(false);
+        if (onInsightGenerated) onInsightGenerated(errorMsg);
+        return;
       }
 
-      const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Analysis complete. Review your financial plan for optimal results.";
-      setInsight(text);
-      setCooldown(30);
-      trackEvent('AI Insight Generated', {
-        'Category': category,
-        'Title': title,
-        'Is Comparison': isComparison
-      });
-      if (onInsightGenerated) onInsightGenerated(text);
-    } catch (error) {
-      console.error('AI Insight Error:', error);
-      const errorMsg = "Unable to generate insight at this moment. Please try again later.";
-      setInsight(errorMsg);
-      if (onInsightGenerated) onInsightGenerated(errorMsg);
-    } finally {
-      setIsGenerating(false);
-    }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent`,
+          {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: finalPrompt }] }],
+              generationConfig: {
+                temperature: 0.4,
+                topP: 0.8,
+                maxOutputTokens: 200
+              }
+            })
+          }
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('Gemini API Error:', response.status, errorData);
+          throw new Error(`API returned ${response.status}`);
+        }
+
+        const data = await response.json();
+        const candidate = data.candidates?.[0];
+        
+        if (candidate?.finishReason === 'SAFETY') {
+          const safetyMsg = "I cannot provide an insight for this data due to safety restrictions. Please try adjusting the values.";
+          setInsight(safetyMsg);
+          if (onInsightGenerated) onInsightGenerated(safetyMsg);
+          return;
+        }
+
+        let text = candidate?.content?.parts?.[0]?.text;
+        
+        if (!text || text.trim().length < 30) {
+          throw new Error("No insight generated or too short");
+        }
+
+        // Cleanup and validation
+        text = text.trim().replace(/\n{2,}/g, '\n');
+        
+        // If output ends with ":" or incomplete punctuation → discard
+        if (text.endsWith(':') || !/[.!?]$/.test(text)) {
+          throw new Error("Incomplete insight generated");
+        }
+
+        setInsight(text);
+        setCooldown(30);
+        trackEvent('AI Insight Generated', {
+          'Category': category,
+          'Title': title,
+          'Is Comparison': isComparison
+        });
+        if (onInsightGenerated) onInsightGenerated(text);
+      } catch (error: any) {
+        clearTimeout(timeoutId);
+        console.error('AI Insight Error:', error);
+        setInsight(errorMsg);
+        if (onInsightGenerated) onInsightGenerated(errorMsg);
+      } finally {
+        setIsGenerating(false);
+      }
   };
 
   const sentences = insight.split('\n').filter(s => s.trim().length > 0);
