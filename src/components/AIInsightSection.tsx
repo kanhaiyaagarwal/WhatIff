@@ -129,36 +129,21 @@ export default function AIInsightSection({
       const finalPrompt = `${basePrompt}\n\nIMPORTANT: Return exactly 3 short paragraphs. Each paragraph must be 1–2 complete sentences. Each paragraph must end with proper punctuation. Do not cut sentences midway.`;
       
       const errorMsg = "Unable to generate insight at the moment. Please try again.";
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       
-      if (!apiKey || apiKey === 'undefined' || apiKey.trim() === '') {
-        console.error('Gemini API Key is missing or invalid');
-        setInsight(errorMsg);
-        setIsGenerating(false);
-        if (onInsightGenerated) onInsightGenerated(errorMsg);
-        return;
-      }
-
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       try {
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent`,
+          `/api/ai/insight`,
           {
             method: 'POST',
             signal: controller.signal,
             headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey
+              'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: finalPrompt }] }],
-              generationConfig: {
-                temperature: 0.4,
-                topP: 0.8,
-                maxOutputTokens: 200
-              }
+              prompt: finalPrompt
             })
           }
         );
@@ -167,8 +152,9 @@ export default function AIInsightSection({
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          console.error('Gemini API Error:', response.status, errorData);
-          throw new Error(`API returned ${response.status}`);
+          console.error('Backend AI Error:', response.status, errorData);
+          const message = errorData.error || errorData.message || `Backend returned ${response.status}`;
+          throw new Error(message);
         }
 
         const data = await response.json();
