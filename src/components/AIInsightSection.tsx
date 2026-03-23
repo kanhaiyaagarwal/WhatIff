@@ -131,7 +131,7 @@ export default function AIInsightSection({
       const errorMsg = "Unable to generate insight at the moment. Please try again.";
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       try {
         const response = await fetch(
